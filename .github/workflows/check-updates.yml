@@ -1,0 +1,40 @@
+name: Check for Tailscale Updates
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Every day at midnight
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest upstream tag
+        id: upstream
+        run: |
+          UPSTREAM_TAG=$(git ls-remote --tags --sort="v:refname" https://github.com/tailscale/tailscale.git | grep -v 'pre\|beta\|rc\|{}$' | tail -n1 | sed 's/.*\///')
+          echo "tag=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
+          echo "Found upstream tag: $UPSTREAM_TAG"
+
+      - name: Get latest local tag
+        id: local
+        run: |
+          LOCAL_TAG=$(git tag --sort="v:refname" | tail -n1 || echo "none")
+          echo "tag=$LOCAL_TAG" >> $GITHUB_OUTPUT
+          echo "Found local tag: $LOCAL_TAG"
+
+      - name: Sync and Release
+        if: steps.upstream.outputs.tag != steps.local.outputs.tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "New version detected: ${{ steps.upstream.outputs.tag }}. Creating tag..."
+          git tag ${{ steps.upstream.outputs.tag }}
+          git push origin ${{ steps.upstream.outputs.tag }}

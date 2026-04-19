@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Tailscale Termux CLI Builder
+# Optimized for Android 11+ with ifconfig-based netmon patch.
+# Credits: Tailscale Team, asutorufa/tailscale, and Gemini CLI AI Agent.
 set -eu
 
 echo "Tailscale Termux CLI Builder"
