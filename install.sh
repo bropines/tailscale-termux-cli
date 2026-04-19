@@ -4,11 +4,12 @@ set -eu
 echo "Tailscale Termux CLI Installer"
 echo "=============================="
 
-# Use Termux standard bin directory
 BIN_DIR="${PREFIX:-/data/data/com.termux/files/usr}/bin"
 SV_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/service/tailscaled"
 SRC_BIN_DIR="bin"
 STATE_DIR="$HOME/.tailscale"
+LOG_FILE="$STATE_DIR/tailscaled.log"
+SOCKET="$STATE_DIR/tailscaled.sock"
 
 if [ ! -d "$SRC_BIN_DIR" ]; then
     echo "Error: 'bin' directory not found. Please run ./build.sh first."
@@ -16,7 +17,6 @@ if [ ! -d "$SRC_BIN_DIR" ]; then
 fi
 
 echo "[1/3] Installing binaries to $BIN_DIR..."
-# Stop existing process to avoid 'Text file busy'
 pkill -f tailscaled || true
 mkdir -p "$BIN_DIR"
 cp "$SRC_BIN_DIR/tailscaled" "$BIN_DIR/tailscaled"
@@ -41,7 +41,7 @@ fi
 
 echo "[3/3] Creating helper scripts..."
 
-# Tailscaled START script
+# Tailscaled START
 cat << EOF > "$BIN_DIR/tailscaled-start"
 #!/usr/bin/env bash
 mkdir -p "$STATE_DIR"
@@ -49,39 +49,46 @@ if pgrep -f "tailscaled.*$STATE_DIR" > /dev/null; then
     echo "tailscaled is already running."
     exit 0
 fi
-echo "Starting tailscaled in background..."
-"$BIN_DIR/tailscaled" \\
+echo "Starting tailscaled (logging to $LOG_FILE)..."
+nohup "$BIN_DIR/tailscaled" \\
     --statedir="$STATE_DIR" \\
     --tun=userspace-networking \\
     --socks5-server=localhost:1055 \\
-    --socket="$STATE_DIR/tailscaled.sock" > /dev/null 2>&1 &
+    --socket="$SOCKET" >> "$LOG_FILE" 2>&1 &
 sleep 2
 if pgrep -f "tailscaled.*$STATE_DIR" > /dev/null; then
-    echo "Done. Use 'tailscale status' to check."
+    echo "Done. Use 'tailscale-cli status' to check."
 else
-    echo "Error: tailscaled failed to start."
+    echo "Error: tailscaled failed to start. Check $LOG_FILE"
     exit 1
 fi
 EOF
 
-# Tailscaled STOP script
+# Tailscaled STOP
 cat << EOF > "$BIN_DIR/tailscaled-stop"
 #!/usr/bin/env bash
 echo "Stopping tailscaled..."
 pkill -f "tailscaled.*$STATE_DIR" || echo "tailscaled was not running."
 EOF
 
-# Aliased tailscale CLI
-cat << EOF > "$BIN_DIR/tailscale-cli"
+# Tailscaled LOG
+cat << EOF > "$BIN_DIR/tailscaled-log"
 #!/usr/bin/env bash
-exec "$BIN_DIR/tailscale" --socket="$STATE_DIR/tailscaled.sock" "\$@"
+tail -f "$LOG_FILE"
 EOF
 
-chmod +x "$BIN_DIR/tailscaled-start" "$BIN_DIR/tailscaled-stop" "$BIN_DIR/tailscale-cli"
+# Tailscale CLI alias
+cat << EOF > "$BIN_DIR/tailscale-cli"
+#!/usr/bin/env bash
+exec "$BIN_DIR/tailscale" --socket="$SOCKET" "\$@"
+EOF
+
+chmod +x "$BIN_DIR/tailscaled-start" "$BIN_DIR/tailscaled-stop" "$BIN_DIR/tailscaled-log" "$BIN_DIR/tailscale-cli"
 
 echo "Installation Complete!"
 echo "=============================="
 echo "Commands:"
-echo "  tailscaled-start  - Start daemon"
+echo "  tailscaled-start  - Start daemon (with logging)"
 echo "  tailscaled-stop   - Stop daemon"
+echo "  tailscaled-log    - View logs"
 echo "  tailscale-cli up  - Connect"
