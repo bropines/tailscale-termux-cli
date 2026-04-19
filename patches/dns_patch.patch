@@ -1,0 +1,15 @@
+--- tailscale_src/net/dns/manager.go
++++ tailscale_src/net/dns/manager.go
+@@ -370,6 +370,11 @@
+ 	if err == nil {
+ 		for _, ip := range baseCfg.Nameservers {
+ 			m.logf("dns: found nameserver from OS: %v", ip)
+ 		}
+ 	}
++	if len(baseCfg.Nameservers) == 0 {
++		m.logf("dns: no OS nameservers found, using Termux fallback (8.8.8.8)")
++		baseCfg.Nameservers = []netip.Addr{netip.MustParseAddr("8.8.8.8"), netip.MustParseAddr("1.1.1.1")}
++	}
+ 
+ 	return m.reconfig(cfg, baseCfg)
+ }

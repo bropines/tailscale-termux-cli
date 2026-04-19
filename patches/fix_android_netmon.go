@@ -5,13 +5,14 @@ package main
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 
-	"tailscale.com/net/netmon"
 	"tailscale.com/hostinfo"
+	"tailscale.com/net/netmon"
 	"tailscale.com/tailcfg"
 )
 
@@ -24,15 +25,15 @@ func init() {
 			hi.Hostname = "tailscale-termux"
 		}
 		fmt.Printf("[Termux] Masking App as: %s, DeviceModel: %s\n", hi.App, hi.DeviceModel)
+
+		// Set DNS fallback early
+		if os.Getenv("TS_DEBUG_NAMESERVERS") == "" {
+			os.Setenv("TS_DEBUG_NAMESERVERS", "8.8.8.8,1.1.1.1")
+			fmt.Printf("[Termux] No DNS detected, using fallback: 8.8.8.8, 1.1.1.1\n")
+		}
 	})
 
-	// 2. Provide DNS fallback for Termux (since system DNS is often unreachable)
-	if os.Getenv("TS_DEBUG_NAMESERVERS") == "" {
-		os.Setenv("TS_DEBUG_NAMESERVERS", "8.8.8.8")
-		fmt.Printf("[Termux] No DNS detected, using fallback: 8.8.8.8\n")
-	}
-
-	// 3. Register custom interface getter using ifconfig
+	// 2. Register custom interface getter using ifconfig
 	netmon.RegisterInterfaceGetter(func() ([]netmon.Interface, error) {
 		out, err := exec.Command("ifconfig").Output()
 		if err != nil {
@@ -107,7 +108,12 @@ func init() {
 			}
 		}
 		if current != nil { ifs = append(ifs, *current) }
-		if len(ifs) > 0 { fmt.Printf("[Termux] Successfully parsed %d interfaces from ifconfig\n", len(ifs)) }
 		return ifs, nil
 	})
+}
+
+// Global variable to ensure we can patch DNS even deeper if needed
+var termuxNameservers = []netip.Addr{
+	netip.MustParseAddr("8.8.8.8"),
+	netip.MustParseAddr("1.1.1.1"),
 }
