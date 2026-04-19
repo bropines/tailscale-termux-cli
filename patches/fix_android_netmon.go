@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -15,7 +16,7 @@ import (
 )
 
 func init() {
-	// 1. Mask as CLI to bypass mobile-specific policies (like Hardware Attestation)
+	// 1. Mask as CLI to bypass mobile-specific policies
 	hostinfo.RegisterHostinfoNewHook(func(hi *tailcfg.Hostinfo) {
 		hi.App = "tailscale-cli"
 		hi.DeviceModel = "Termux"
@@ -25,7 +26,13 @@ func init() {
 		fmt.Printf("[Termux] Masking App as: %s, DeviceModel: %s\n", hi.App, hi.DeviceModel)
 	})
 
-	// 2. Register custom interface getter using ifconfig
+	// 2. Provide DNS fallback for Termux (since system DNS is often unreachable)
+	if os.Getenv("TS_DEBUG_NAMESERVERS") == "" {
+		os.Setenv("TS_DEBUG_NAMESERVERS", "8.8.8.8")
+		fmt.Printf("[Termux] No DNS detected, using fallback: 8.8.8.8\n")
+	}
+
+	// 3. Register custom interface getter using ifconfig
 	netmon.RegisterInterfaceGetter(func() ([]netmon.Interface, error) {
 		out, err := exec.Command("ifconfig").Output()
 		if err != nil {
