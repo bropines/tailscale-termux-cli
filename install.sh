@@ -16,6 +16,8 @@ if [ ! -d "$SRC_BIN_DIR" ]; then
 fi
 
 echo "[1/3] Installing binaries to $BIN_DIR..."
+# Stop existing process to avoid 'Text file busy'
+pkill -f tailscaled || true
 mkdir -p "$BIN_DIR"
 cp "$SRC_BIN_DIR/tailscaled" "$BIN_DIR/tailscaled"
 cp "$SRC_BIN_DIR/tailscale" "$BIN_DIR/tailscale"

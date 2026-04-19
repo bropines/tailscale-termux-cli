@@ -18,6 +18,8 @@ fi
 echo "-> Latest Release: $LATEST_TAG"
 
 echo "[2/3] Downloading binaries to $BIN_DIR..."
+# Stop existing process to avoid 'Text file busy'
+pkill -f tailscaled || true
 mkdir -p "$BIN_DIR"
 wget -q --show-progress -O "$BIN_DIR/tailscaled" "https://github.com/$REPO/releases/download/$LATEST_TAG/tailscaled"
 wget -q --show-progress -O "$BIN_DIR/tailscale" "https://github.com/$REPO/releases/download/$LATEST_TAG/tailscale"
