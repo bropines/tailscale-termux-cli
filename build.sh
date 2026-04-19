@@ -22,7 +22,12 @@ if [ -z "${TS_VERSION:-}" ]; then
         TS_VERSION="v1.96.5"
     fi
 fi
-echo "-> Using Tailscale version: $TS_VERSION"
+
+# Clean TS_VERSION for downloading source (e.g., convert v1.96.5-3 back to v1.96.5)
+# This handles cases where TS_VERSION comes from our repository's tag.
+DOWNLOAD_VERSION=$(echo "$TS_VERSION" | sed -E 's/(-[0-9]+)$//')
+echo "-> Tailscale build version: $TS_VERSION"
+echo "-> Tailscale source version to download: $DOWNLOAD_VERSION"
 
 WORKDIR="$(pwd)"
 SRC_DIR="$WORKDIR/tailscale_src"
@@ -32,10 +37,13 @@ OUT_DIR="$WORKDIR/bin"
 mkdir -p "$OUT_DIR"
 
 # 3. Downloading source
-echo "[1/3] Downloading Tailscale source..."
+echo "[1/3] Downloading Tailscale source ($DOWNLOAD_VERSION)..."
 if [ ! -d "$SRC_DIR" ]; then
-    wget -qO- "https://github.com/tailscale/tailscale/archive/refs/tags/${TS_VERSION}.tar.gz" | tar -xz
-    mv tailscale-${TS_VERSION#v} "$SRC_DIR"
+    if ! wget -qO- "https://github.com/tailscale/tailscale/archive/refs/tags/${DOWNLOAD_VERSION}.tar.gz" | tar -xz; then
+        echo "Error: Failed to download or extract Tailscale source for version $DOWNLOAD_VERSION"
+        exit 1
+    fi
+    mv tailscale-${DOWNLOAD_VERSION#v} "$SRC_DIR"
 else
     echo "-> Source already exists. Skipping download."
 fi
