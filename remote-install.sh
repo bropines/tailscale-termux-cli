@@ -61,12 +61,26 @@ has_flag "--socket" || FINAL_ARGS+=("--socket=$SOCKET")
 has_flag "--tun" || FINAL_ARGS+=("--tun=userspace-networking")
 
 if ! has_flag "--socks5-server"; then
-    RANDOM_PORT=\$((RANDOM % 64511 + 1024))
-    FINAL_ARGS+=("--socks5-server=localhost:\$RANDOM_PORT")
-    echo "Using random SOCKS5 port: \$RANDOM_PORT"
+    if [ -n "\${TS_SOCKS5_SERVER:-}" ]; then FINAL_ARGS+=("--socks5-server=\$TS_SOCKS5_SERVER")
+    elif [ -n "\${TS_SOCKS5_PORT:-}" ]; then FINAL_ARGS+=("--socks5-server=localhost:\$TS_SOCKS5_PORT")
+    else
+        RANDOM_PORT=\$((RANDOM % 64511 + 1024))
+        FINAL_ARGS+=("--socks5-server=localhost:\$RANDOM_PORT")
+        echo "Using random SOCKS5 port: \$RANDOM_PORT"
+    fi
 fi
 
+if ! has_flag "--outbound-http-proxy-listen" && [ -n "\${TS_HTTP_PROXY:-}" ]; then FINAL_ARGS+=("--outbound-http-proxy-listen=\$TS_HTTP_PROXY"); fi
+if ! has_flag "--port" && [ -n "\${TS_PORT:-}" ]; then FINAL_ARGS+=("--port=\$TS_PORT"); fi
+if ! has_flag "--debug" && [ -n "\${TS_DEBUG:-}" ]; then FINAL_ARGS+=("--debug=\$TS_DEBUG"); fi
+if ! has_flag "--verbose" && [ -n "\${TS_VERBOSE:-}" ]; then FINAL_ARGS+=("--verbose=\$TS_VERBOSE"); fi
+if ! has_flag "--no-logs-no-support" && [[ "\${TS_NO_LOGS:-}" == "true" ]]; then FINAL_ARGS+=("--no-logs-no-support"); fi
+
 FINAL_ARGS+=("\${USER_ARGS[@]}")
+if [ -n "\${TS_EXTRA_ARGS:-}" ]; then
+    read -ra EXTRA_ARR <<< "\$TS_EXTRA_ARGS"
+    FINAL_ARGS+=("\${EXTRA_ARR[@]}")
+fi
 
 echo "Starting tailscaled..."
 nohup "$BIN_DIR/tailscaled" "\${FINAL_ARGS[@]}" >> "$LOG_FILE" 2>&1 &
@@ -104,37 +118,19 @@ cat << 'EOF' > "$BIN_DIR/tailscale-test"
 #!/usr/bin/env bash
 echo "Tailscale Functional Test"
 echo "========================="
-
-PID=\$(pgrep -f "tailscaled.*/data/data/com.termux/files/home/.tailscale")
-if [ -z "\$PID" ]; then
-    echo "[-] Error: tailscaled is not running."
-    exit 1
+PID=$(pgrep -f "tailscaled.*/data/data/com.termux/files/home/.tailscale")
+if [ -z "$PID" ]; then echo "[-] Error: tailscaled is not running."; exit 1; fi
+STATUS=$(tailscale-cli status --json 2>/dev/null)
+if [[ $? -eq 0 ]] && echo "$STATUS" | grep -q '"BackendState": "Running"'; then
+    echo "[+] Authenticated."
+else echo "[-] Error: Not authenticated."; exit 1; fi
+SOCKS_ADDR=$(ps -p "$PID" -o args= | grep -Po '--socks5-server=\K[^ ]+')
+if [ -n "$SOCKS_ADDR" ]; then
+    echo "[*] Testing SOCKS5 on $SOCKS_ADDR..."
+    if curl -s --socks5-hostname "$SOCKS_ADDR" https://api.ipify.org > /dev/null; then
+        echo "[+] SOCKS5 OK"
+    else echo "[-] SOCKS5 FAILED"; fi
 fi
-echo "[+] Daemon is running (PID: \$PID)."
-
-STATUS=\$(tailscale-cli status --json 2>/dev/null)
-if [[ \$? -eq 0 ]] && echo "\$STATUS" | grep -q '"BackendState": "Running"'; then
-    IP=\$(echo "\$STATUS" | grep -Po '"Self":.*?,"IPv4": "\K.*?(?=")')
-    echo "[+] Authenticated. Your IP: \$IP"
-else
-    echo "[-] Error: Not authenticated."
-    exit 1
-fi
-
-SOCKS_ADDR=\$(ps -p "\$PID" -o args= | grep -Po '--socks5-server=\K[^ ]+')
-if [ -z "\$SOCKS_ADDR" ]; then
-    echo "[-] Error: Could not detect SOCKS5 port."
-    exit 1
-fi
-echo "[*] Testing SOCKS5 on \$SOCKS_ADDR..."
-
-EXT_IP=\$(curl -s --socks5-hostname "\$SOCKS_ADDR" https://api.ipify.org)
-if [ -n "\$EXT_IP" ]; then
-    echo "[+] SOCKS5 OK (IP: \$EXT_IP)"
-else
-    echo "[-] SOCKS5 FAILED"
-fi
-echo "========================="
 EOF
 
 chmod +x "$BIN_DIR/tailscaled-start" "$BIN_DIR/tailscaled-stop" "$BIN_DIR/tailscaled-log" "$BIN_DIR/tailscale-cli" "$BIN_DIR/tailscale-test"
