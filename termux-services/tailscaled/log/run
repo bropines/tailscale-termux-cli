@@ -1,0 +1,4 @@
+#!/data/data/com.termux/files/usr/bin/sh
+LOGDIR="$PREFIX/var/log/tailscaled"
+mkdir -p "$LOGDIR"
+exec svlogd -tt "$LOGDIR"

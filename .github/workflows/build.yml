@@ -1,0 +1,37 @@
+name: Build Tailscale for Termux (Android 11+)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      ts_version:
+        description: 'Tailscale Version (e.g., v1.78.1)'
+        required: true
+        default: 'v1.78.1'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          check-latest: true
+
+      - name: Run Build Script
+        env:
+          TS_VERSION: ${{ github.event.inputs.ts_version || 'v1.96.5' }}
+        run: |
+          chmod +x ./build.sh
+          ./build.sh
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tailscale-termux-cli-binaries
+          path: bin/*

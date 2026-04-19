@@ -1,0 +1,19 @@
+# Binaries
+bin/
+tailscale_src/
+tailscaled-termux
+tailscale-termux
+*.log
+*.sock
+
+# Key files
+tailsocks_cli_key.pub
+tailscale-termux-build/
+install-fixed.sh
+official_tailscaled.log
+tailscaled_test.log
+tailscale_1.96.4_arm64.tgz
+tailscale_1.78.1_arm64.tgz
+tailscale_1.96.4_arm64/
+tailscale_1.78.1_arm64/
+EOF

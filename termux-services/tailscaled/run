@@ -1,0 +1,11 @@
+#!/data/data/com.termux/files/usr/bin/sh
+exec 2>&1
+
+TAILSCALE_HOME="$HOME/.tailscale"
+mkdir -p "$TAILSCALE_HOME"
+
+# Start tailscaled in userspace mode for Android 11+
+exec "$HOME/bin/tailscaled" \
+    --statedir="$TAILSCALE_HOME" \
+    --tun=userspace-networking \
+    --socks5-server=localhost:1055
