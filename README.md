@@ -32,29 +32,49 @@ If you have Go installed in Termux, you can build it yourself:
    ```bash
    tailscaled-start
    ```
-   *Note: This starts the daemon in the background with userspace networking enabled.*
+   *Note: By default, this starts the daemon in the background with a random SOCKS5 port.*
 
 2. **Authenticate:**
    ```bash
-   tailscale up
+   tailscale-cli up
    ```
 
-## Termux Services (sv)
-If you have termux-services installed, the install.sh script will prompt you to set up tailscaled as a managed service. You can then manage it with:
+3. **Check status/test:**
+   ```bash
+   tailscale-test
+   ```
+
+## Configuration (.env)
+You can configure the daemon by creating a file at `~/.tailscale/.env`. The `tailscaled-start` script will automatically load these variables:
+
+| Variable | Tailscaled Flag | Description |
+|----------|-----------------|-------------|
+| `TS_SOCKS5_PORT` | `--socks5-server` | Set a specific port (e.g. `9050`) |
+| `TS_SOCKS5_SERVER` | `--socks5-server` | Full address (e.g. `localhost:1055`) |
+| `TS_HTTP_PROXY` | `--outbound-http-proxy-listen` | HTTP Proxy address |
+| `TS_PORT` | `--port` | UDP port for WireGuard |
+| `TS_DEBUG` | `--debug` | Debug server address |
+| `TS_VERBOSE` | `--verbose` | Verbosity level (1, 2...) |
+| `TS_NO_LOGS` | `--no-logs-no-support` | Set to `true` to disable logs |
+| `TS_EXTRA_ARGS` | (raw flags) | Any other flags to pass |
+
+Example `.env`:
 ```bash
-sv start tailscaled
-sv stop tailscaled
+TS_SOCKS5_PORT=1055
+TS_VERBOSE=1
+TS_EXTRA_ARGS="--hostname=termux-node"
 ```
 
-## Automated Updates
-This repository automatically checks for new stable Tailscale releases every 24 hours. When a new version is detected, GitHub Actions will:
-1. Create a new tag in this repository.
-2. Build the patched binaries for Android/ARM64.
-3. Create a new GitHub Release with the precompiled binaries.
+## Helper Commands
+- `tailscaled-start`: Starts the daemon with your config.
+- `tailscaled-stop`: Stops the running daemon.
+- `tailscaled-log`: Follows the daemon logs.
+- `tailscale-cli`: Alias for `tailscale` that uses the correct socket.
+- `tailscale-test`: Runs a functional test of your setup.
 
 ## Credits & Attribution
 - **Core Logic:** [Tailscale Team](https://github.com/tailscale/tailscale).
 - **Patch Inspiration:** [asutorufa/tailscale](https://github.com/Asutorufa/tailscale).
-- **Architect & AI Assistance:** This project was developed with the assistance of the Gemini CLI AI Agent, which designed the Netmon bridge and automated the build/release pipelines.
+- **Architect & AI Assistance:** This project was developed with the assistance of the Gemini CLI AI Agent.
 
 *Note: This project is not affiliated with Tailscale Inc.*
