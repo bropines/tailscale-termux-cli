@@ -59,8 +59,8 @@ go mod tidy
 
 # 5. Compiling
 echo "[3/3] Compiling binaries..."
-# ts_no_clipboard: fix SIGSYS crash in Termux (faccessat2 issues)
-TAGS="ts_no_clipboard,ts_omit_systray,ts_omit_kube,ts_omit_aws,ts_omit_bird,ts_omit_desktop_sessions,ts_omit_networkmanager,ts_omit_sdnotify"
+# ts_no_clipboard & ts_omit_taildrop: fix crashes/panics in Termux environment
+TAGS="ts_no_clipboard,ts_omit_taildrop,ts_omit_systray,ts_omit_kube,ts_omit_aws,ts_omit_bird,ts_omit_desktop_sessions,ts_omit_networkmanager,ts_omit_sdnotify"
 
 export GOOS=android
 export GOARCH=arm64
