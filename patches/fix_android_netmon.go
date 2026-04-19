@@ -6,12 +6,9 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"net/netip"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
-	"time"
 
 	"tailscale.com/hostinfo"
 	"tailscale.com/net/netmon"
@@ -36,7 +33,6 @@ func init() {
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 			var d net.Dialer
-			// Hardcode fallback to Google DNS for the entire binary
 			return d.DialContext(ctx, "udp", "8.8.8.8:53")
 		},
 	}
