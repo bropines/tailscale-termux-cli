@@ -49,11 +49,10 @@ else
 fi
 
 # 4. Applying patch
-echo "[2/3] Applying patches (netmon and DNS fallback)..."
+echo "[2/3] Applying netmon patch (ifconfig parser)..."
 cp "$PATCH_DIR/fix_android_netmon.go" "$SRC_DIR/cmd/tailscaled/"
 # Apply DNS manager patch
 cd "$SRC_DIR"
-patch -p1 < "$PATCH_DIR/dns_patch.patch" || echo "-> Warning: DNS patch failed to apply (might be already patched)."
 
 # Ensure anet is available for the build
 go get github.com/wlynxg/anet@v0.0.5
