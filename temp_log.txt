@@ -1,0 +1,375 @@
+[Termux] Successfully parsed 4 interfaces from ifconfig
+2026/04/19 05:11:09 logtail started
+2026/04/19 05:11:09 Program starting: v1.96.5-dev20260419-t21b703a74, Go 1.26.1: []string{"/data/data/com.termux/files/usr/bin/tailscaled", "--statedir=/data/data/com.termux/files/home/.tailscale", "--tun=userspace-networking", "--socks5-server=localhost:1055", "--socket=/data/data/com.termux/files/home/.tailscale/tailscaled.sock"}
+2026/04/19 05:11:09 LogID: 8e6d437989a2505425f9088aa52631ad63244ab16169c32a8274a35f812e0cc4
+2026/04/19 05:11:09 logpolicy: using UserCacheDir, "/data/data/com.termux/files/home/.cache/Tailscale"
+2026/04/19 05:11:09 dns: using dns.noopManager
+2026/04/19 05:11:09 wgengine.NewUserspaceEngine(tun "userspace-networking") ...
+2026/04/19 05:11:09 dns: using dns.noopManager
+2026/04/19 05:11:09 logtail: dial "log.tailscale.com:443" failed: dial tcp: lookup log.tailscale.com on [::1]:53: read udp [::1]:51723->[::1]:53: read: connection refused (in 5ms), trying bootstrap...
+2026/04/19 05:11:09 link state: interfaces.State{defaultRoute= ifs={rmnet_data4:[10.117.194.38/30] tun0:[10.10.10.10/32] wlan0:[192.168.1.33/24]} v4=true v6=false}
+2026/04/19 05:11:09 magicsock: [warning] failed to force-set UDP read buffer size to 7340032: operation not permitted; using kernel default values (impacts throughput only)
+2026/04/19 05:11:09 magicsock: [warning] failed to force-set UDP write buffer size to 7340032: operation not permitted; using kernel default values (impacts throughput only)
+2026/04/19 05:11:09 magicsock: [warning] failed to force-set UDP read buffer size to 7340032: operation not permitted; using kernel default values (impacts throughput only)
+2026/04/19 05:11:09 magicsock: [warning] failed to force-set UDP write buffer size to 7340032: operation not permitted; using kernel default values (impacts throughput only)
+2026/04/19 05:11:09 magicsock: disco key = d:7c437939bb8b864d
+2026/04/19 05:11:09 Creating WireGuard device...
+2026/04/19 05:11:09 Bringing WireGuard device up...
+2026/04/19 05:11:09 Bringing router up...
+2026/04/19 05:11:09 Clearing router settings...
+2026/04/19 05:11:09 Starting network monitor...
+2026/04/19 05:11:09 Engine created.
+2026/04/19 05:11:09 trying bootstrapDNS("derp2d.tailscale.com", "192.73.252.65") for "log.tailscale.com" ...
+2026/04/19 05:11:09 pm: migrating "ipn-android" profile to new format
+2026/04/19 05:11:09 logpolicy: using UserCacheDir, "/data/data/com.termux/files/home/.cache/Tailscale"
+2026/04/19 05:11:09 linkChange: in state NoState; PAC or proxyConfig changed; updating routes
+2026/04/19 05:11:09 got LocalBackend in 9ms
+2026/04/19 05:11:09 Start
+2026/04/19 05:11:09 ipnext: active extensions: posture, clientupdate, relayserver, taildrop, conn25, portlist
+2026/04/19 05:11:09 TPM: error opening: stat /dev/tpmrm0: no such file or directory
+[Termux] Masking App as: tailscale-cli, DeviceModel: Termux
+2026/04/19 05:11:09 Backend: logs: be:8e6d437989a2505425f9088aa52631ad63244ab16169c32a8274a35f812e0cc4 fe:
+2026/04/19 05:11:09 Switching ipn state NoState -> NeedsLogin (WantRunning=false, nm=false)
+2026/04/19 05:11:09 blockEngineUpdates(true)
+2026/04/19 05:11:09 wgengine: Reconfig: configuring userspace WireGuard config (with 0/0 peers)
+2026/04/19 05:11:09 wgengine: Reconfig: configuring router
+2026/04/19 05:11:09 wgengine: Reconfig: configuring DNS
+2026/04/19 05:11:09 health(warnable=wantrunning-false): error: Tailscale is stopped.
+2026/04/19 05:11:09 dns: Set: {DefaultResolvers:[] Routes:{} SearchDomains:[] Hosts:0}
+2026/04/19 05:11:09 dns: Resolvercfg: {Routes:{} Hosts:0 LocalDomains:[]}
+2026/04/19 05:11:09 dns: OScfg: {}
+2026/04/19 05:11:10 bootstrapDNS("derp2d.tailscale.com", "192.73.252.65") for "log.tailscale.com" = [199.165.136.101 2606:b740:1:20::103]
+2026/04/19 05:11:10 logtail: bootstrap dial succeeded
+2026/04/19 05:11:19 localapi: [POST] /localapi/v0/check-prefs
+2026/04/19 05:11:19 localapi: [POST] /localapi/v0/start
+2026/04/19 05:11:19 Start
+[Termux] Masking App as: tailscale-cli, DeviceModel: Termux
+2026/04/19 05:11:19 Start: updated prefs: Prefs{ra=true dns=true want=true statefulFiltering=false update=check Persist=nil}, reason: [opts.UpdatePrefs]
+2026/04/19 05:11:19 Backend: logs: be:8e6d437989a2505425f9088aa52631ad63244ab16169c32a8274a35f812e0cc4 fe:
+2026/04/19 05:11:19 Switching ipn state NoState -> NeedsLogin (WantRunning=true, nm=false)
+2026/04/19 05:11:19 blockEngineUpdates(true)
+2026/04/19 05:11:19 health(warnable=warming-up): error: Tailscale is starting. Please wait.
+2026/04/19 05:11:19 localapi: [POST] /localapi/v0/login-interactive
+2026/04/19 05:11:19 health(warnable=wantrunning-false): ok
+2026/04/19 05:11:19 control: client.Shutdown ...
+2026/04/19 05:11:19 control: mapRoutine: exiting
+2026/04/19 05:11:19 control: authRoutine: exiting
+2026/04/19 05:11:19 control: updateRoutine: exiting
+2026/04/19 05:11:19 control: Client.Shutdown done.
+2026/04/19 05:11:19 StartLoginInteractiveAs(""): url=false
+2026/04/19 05:11:19 control: client.Login(2)
+2026/04/19 05:11:19 control: LoginInteractive -> regen=true
+2026/04/19 05:11:19 control: doLogin(regen=true, hasUrl=false)
+2026/04/19 05:11:19 control: trying bootstrapDNS("derp8d.tailscale.com", "178.62.44.132") for "controlplane.tailscale.com" ...
+2026/04/19 05:11:20 control: bootstrapDNS("derp8d.tailscale.com", "178.62.44.132") for "controlplane.tailscale.com" = [2606:b740:49::115 2606:b740:49::108 2606:b740:49::104 192.200.0.115 2606:b740:49::105 192.200.0.113 2606:b740:49::116 192.200.0.106 192.200.0.107 2606:b740:49::112 192.200.0.102 2606:b740:49::114 2606:b740:49::103 2606:b740:49::102 192.200.0.116 192.200.0.110 2606:b740:49::111 2606:b740:49::101 192.200.0.112 2606:b740:49::109 192.200.0.114 192.200.0.111 192.200.0.109 192.200.0.103 2606:b740:49::107 192.200.0.105 2606:b740:49::113 2606:b740:49::110 192.200.0.101 2606:b740:49::106 192.200.0.108 192.200.0.104]
+2026/04/19 05:11:20 control: control server key from https://controlplane.tailscale.com: ts2021=[fSeS+], legacy=[nlFWp]
+2026/04/19 05:11:20 control: Generating a new nodekey.
+2026/04/19 05:11:20 control: RegisterReq: onode= node=[1yyf+] fup=false nks=false
+2026/04/19 05:11:20 control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=true
+2026/04/19 05:11:20 control: AuthURL is https://login.tailscale.com/a/18686296018614
+2026/04/19 05:11:20 control: doLogin(regen=false, hasUrl=true)
+2026/04/19 05:11:20 control: RegisterReq: onode= node=[1yyf+] fup=true nks=false
+2026/04/19 05:11:20 Received auth URL: https://login.tailsc...
+2026/04/19 05:11:20 popBrowserAuthNow(""): url=true, key-expired=false, seamless-key-renewal=false
+2026/04/19 05:11:20 blockEngineUpdates(true)
+2026/04/19 05:11:20 stopEngineAndWait...
+2026/04/19 05:11:20 stopEngineAndWait: done.
+2026/04/19 05:11:24 health(warnable=warming-up): ok
+2026/04/19 05:11:25 Received error: register request: http 410: auth path not found
+2026/04/19 05:11:25 health(warnable=login-state): error: You are logged out. The last login error was: register request: http 410: auth path not found
+2026/04/19 05:11:25 control: doLogin(regen=false, hasUrl=true)
+2026/04/19 05:11:25 control: RegisterReq: onode= node=[1yyf+] fup=true nks=false
+2026/04/19 05:11:25 control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=true; authURL=false
+2026/04/19 05:11:25 blockEngineUpdates(false)
+2026/04/19 05:11:25 health(warnable=login-state): ok
+[Termux] Masking App as: tailscale-cli, DeviceModel: Termux
+2026/04/19 05:11:25 control: netmap: got new dial plan from control
+2026/04/19 05:11:25 health(warnable=not-in-map-poll): ok
+[Termux] Masking App as: tailscale-cli, DeviceModel: Termux
+panic: runtime error: invalid memory address or nil pointer dereference
+[signal SIGSEGV: segmentation violation code=0x1 addr=0x0 pc=0x56f7468ed0]
+
+goroutine 173 [running]:
+tailscale.com/feature/taildrop.(*Extension).onChangeProfile(0x6dc9a4c3c0, {0x56f738dc64?}, {0x6dc98df520?}, 0x4?)
+        tailscale.com/feature/taildrop/ext.go:170 +0x150
+tailscale.com/ipn/ipnlocal.(*ExtensionHost).NotifyProfileChange(0x6dc9a7c000, {0x6dc9a30680?}, {0x0?}, 0x1)
+        tailscale.com/ipn/ipnlocal/extension_host.go:424 +0x174
+tailscale.com/ipn/ipnlocal.(*profileManager).setProfilePrefs(0x6dc9bf8000, 0x0?, {0x6dc9899ab8?}, {{0x6dc98a2911, 0x11}, {0x6dc9a80130, 0xf}, {0x6dc9a80380, 0xf}})
+        tailscale.com/ipn/ipnlocal/profiles.go:461 +0x488
+tailscale.com/ipn/ipnlocal.(*profileManager).SetPrefs(0x6dc9bf8000, {0x6dc98df520?}, {{0x6dc98a2911, 0x11}, {0x6dc9a80130, 0xf}, {0x6dc9a80380, 0xf}})
+        tailscale.com/ipn/ipnlocal/profiles.go:388 +0x1d4
+tailscale.com/ipn/ipnlocal.(*LocalBackend).setControlClientStatusLocked(0x6dc9a7a008, {0x56f8268c70, 0x6dc9c2cc60}, {{}, {0x0, 0x0}, {0x0, 0x0}, 0x1, 0x1, ...})
+        tailscale.com/ipn/ipnlocal/local.go:1733 +0x828
+tailscale.com/ipn/ipnlocal.(*LocalBackend).SetControlClientStatus(0x6dc9d5ef84?, {0x56f8268c70?, 0x6dc9c2cc60?}, {{}, {0x0, 0x0}, {0x0, 0x0}, 0x1, 0x1, ...})
+        tailscale.com/ipn/ipnlocal/local.go:1576 +0xf0
+tailscale.com/control/controlclient.(*Auto).sendStatus.func1()
+        tailscale.com/control/controlclient/auto.go:641 +0x208
+tailscale.com/util/execqueue.(*ExecQueue).run(0x6dc9c2cca0, 0x0?)
+        tailscale.com/util/execqueue/execqueue.go:61 +0x28
+created by tailscale.com/util/execqueue.(*ExecQueue).Add in goroutine 29
+        tailscale.com/util/execqueue/execqueue.go:35 +0x180
+
+
+Причем если ты глянешь на старый билд то все как бы окей
+
+❯ ~/tailscaled-termux --statedir=~/.tailscale --tun=userspace-networking --socks5-server=localhost:1055
+[Termux] Successfully parsed 4 interfaces from ifconfig
+logtail started
+Program starting: v1.78.1-ERR-BuildInfo, Go 1.23.6: []string{"/data/data/com.termux/files/home/tailscaled-termux", "--statedir=~/.tailscale", "--tun=userspace-networking", "--socks5-server=localhost:1055"}
+LogID: 8e6d437989a2505425f9088aa52631ad63244ab16169c32a8274a35f812e0cc4
+logpolicy: using UserCacheDir, "/data/data/com.termux/files/home/.cache/Tailscale"
+dns: [rc=missing ret=direct]
+dns: using "direct" mode
+dns: using *dns.directManager
+dns: inotify addwatch: context canceled
+wgengine.NewUserspaceEngine(tun "userspace-networking") ...
+dns: using dns.noopManager
+link state: interfaces.State{defaultRoute= ifs={rmnet_data4:[10.117.194.38/30] tun0:[10.10.10.10/32] wlan0:[192.168.1.33/24]} v4=true v6=false}
+onPortUpdate(port=58800, network=udp6)
+magicsock: [warning] failed to force-set UDP read buffer size to 7340032: operation not permitted; using kernel default values (impacts throughput only)
+magicsock: [warning] failed to force-set UDP write buffer size to 7340032: operation not permitted; using kernel default values (impacts throughput only)
+onPortUpdate(port=43662, network=udp4)
+magicsock: [warning] failed to force-set UDP read buffer size to 7340032: operation not permitted; using kernel default values (impacts throughput only)
+magicsock: [warning] failed to force-set UDP write buffer size to 7340032: operation not permitted; using kernel default values (impacts throughput only)
+magicsock: disco key = d:4492c4bb9f99412e
+Creating WireGuard device...
+Bringing WireGuard device up...
+Bringing router up...
+Clearing router settings...
+Starting network monitor...
+Engine created.
+logtail: dial "log.tailscale.io:443" failed: dial tcp: lookup log.tailscale.io on [::1]:53: read udp [::1]:41525->[::1]:53: read: connection refused (in 7ms), trying bootstrap...
+pm: using backend prefs for "profile-0b84": Prefs{ra=false dns=true want=true statefulFiltering=false update=check Persist{lm=, o=, n=[CKmqh] u="bropines@gmail.com"}}
+logpolicy: using UserCacheDir, "/data/data/com.termux/files/home/.cache/Tailscale"
+got LocalBackend in 12ms
+Start
+trying bootstrapDNS("derp23c.tailscale.com", "185.34.3.207") for "log.tailscale.io" ...
+Backend: logs: be:8e6d437989a2505425f9088aa52631ad63244ab16169c32a8274a35f812e0cc4 fe:
+control: client.Login(0)
+control: doLogin(regen=false, hasUrl=false)
+health(warnable=warming-up): error: Tailscale is starting. Please wait.
+control: trying bootstrapDNS("derp25c.tailscale.com", "102.67.167.37") for "controlplane.tailscale.com" ...
+bootstrapDNS("derp23c.tailscale.com", "185.34.3.207") for "log.tailscale.io" = [52.207.202.187 2600:1f18:429f:9305:823d:72c0:16da:fb33]
+logtail: bootstrap dial succeeded
+control: bootstrapDNS("derp25c.tailscale.com", "102.67.167.37") for "controlplane.tailscale.com" = [2606:b740:49::101 2606:b740:49::111 192.200.0.114 2606:b740:49::102 2606:b740:49::116 2606:b740:49::115 2606:b740:49::104 2606:b740:49::109 192.200.0.103 192.200.0.104 192.200.0.116 2606:b740:49::107 192.200.0.113 192.200.0.115 192.200.0.101 192.200.0.102 2606:b740:49::113 192.200.0.107 192.200.0.111 192.200.0.108 2606:b740:49::105 2606:b740:49::103 2606:b740:49::106 192.200.0.105 2606:b740:49::114 2606:b740:49::112 192.200.0.106 192.200.0.109 2606:b740:49::108 192.200.0.110 192.200.0.112 2606:b740:49::110]
+control: control server key from https://controlplane.tailscale.com: ts2021=[fSeS+], legacy=[nlFWp]
+control: RegisterReq: onode= node=[CKmqh] fup=false nks=false
+control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=true
+control: AuthURL is https://login.tailscale.com/a/1b2d6679337d9e
+control: doLogin(regen=false, hasUrl=true)
+control: RegisterReq: onode= node=[CKmqh] fup=true nks=false
+Received auth URL: https://login.tailsc...
+popBrowserAuthNow(""): url=true, key-expired=false, seamless-key-renewal=false
+blockEngineUpdates(true)
+stopEngineAndWait...
+wgengine: Reconfig: configuring userspace WireGuard config (with 0/0 peers)
+wgengine: Reconfig: configuring router
+wgengine: Reconfig: configuring DNS
+dns: Set: {DefaultResolvers:[] Routes:{} SearchDomains:[] Hosts:0}
+dns: Resolvercfg: {Routes:{} Hosts:0 LocalDomains:[]}
+dns: OScfg: {}
+requestEngineStatusAndWait
+requestEngineStatusAndWait: waiting...
+Switching ipn state NoState -> NeedsLogin (WantRunning=true, nm=false)
+blockEngineUpdates(true)
+requestEngineStatusAndWait: got status update.
+stopEngineAndWait: done.
+Start
+Backend: logs: be:8e6d437989a2505425f9088aa52631ad63244ab16169c32a8274a35f812e0cc4 fe:
+control: client.Login(0)
+control: client.Shutdown ...
+control: mapRoutine: exiting
+control: doLogin(regen=false, hasUrl=false)
+control: authRoutine: exiting
+health(warnable=login-state): error: You are logged out.
+control: updateRoutine: exiting
+control: Client.Shutdown done.
+control: trying bootstrapDNS("derp1f.tailscale.com", "199.38.181.104") for "controlplane.tailscale.com" ...
+health(warnable=warming-up): ok
+control: bootstrapDNS("derp1f.tailscale.com", "199.38.181.104") for "controlplane.tailscale.com" = [192.200.0.101 192.200.0.109 2606:b740:49::104 192.200.0.106 2606:b740:49::112 2606:b740:49::101 192.200.0.108 192.200.0.105 2606:b740:49::109 192.200.0.113 2606:b740:49::116 2606:b740:49::102 2606:b740:49::108 192.200.0.110 2606:b740:49::106 192.200.0.114 2606:b740:49::110 192.200.0.111 2606:b740:49::105 192.200.0.115 2606:b740:49::113 2606:b740:49::107 192.200.0.107 2606:b740:49::103 2606:b740:49::115 192.200.0.104 2606:b740:49::114 2606:b740:49::111 192.200.0.103 192.200.0.116 192.200.0.102 192.200.0.112]
+control: control server key from https://controlplane.tailscale.com: ts2021=[fSeS+], legacy=[nlFWp]
+control: RegisterReq: onode= node=[CKmqh] fup=false nks=false
+control: controlhttp: forcing port 443 dial due to recent noise dial
+control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=true
+control: AuthURL is https://login.tailscale.com/a/47fa0ef3355e0
+control: doLogin(regen=false, hasUrl=true)
+control: RegisterReq: onode= node=[CKmqh] fup=true nks=false
+Received auth URL: https://login.tailsc...
+popBrowserAuthNow(""): url=true, key-expired=false, seamless-key-renewal=false
+blockEngineUpdates(true)
+stopEngineAndWait...
+requestEngineStatusAndWait
+requestEngineStatusAndWait: waiting...
+Switching ipn state NoState -> NeedsLogin (WantRunning=true, nm=false)
+blockEngineUpdates(true)
+requestEngineStatusAndWait: got status update.
+stopEngineAndWait: done.
+logtail: upload: log upload of 3966 bytes compressed failed: Post "https://log.tailscale.io/c/tailnode.log.tailscale.io/e86da096327677ab941637606f4fb5267134f031f178cd68d773a9cd187dce54": net/http: TLS handshake timeout
+health(warnable=no-derp-home): error: Tailscale could not connect to any relay server. Check your Internet connection.
+health(warnable=login-state): error: You are logged out. The last login error was: register request: http 410: auth path not found
+Received error: register request: http 410: auth path not found
+control: doLogin(regen=false, hasUrl=true)
+control: RegisterReq: onode= node=[CKmqh] fup=true nks=false
+control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=false
+Received error: device with nodekey:08a9aa84cdb102a58f79d85740881369474162ed77ceb95cb87ad7c54e2edf4a already exists; please log out explicitly and try logging in again.
+health(warnable=login-state): error: You are logged out. The last login error was: device with nodekey:08a9aa84cdb102a58f79d85740881369474162ed77ceb95cb87ad7c54e2edf4a already exists; please log out explicitly and try logging in again.
+control: doLogin(regen=false, hasUrl=true)
+control: RegisterReq: onode= node=[CKmqh] fup=true nks=false
+control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=false
+Received error: device with nodekey:08a9aa84cdb102a58f79d85740881369474162ed77ceb95cb87ad7c54e2edf4a already exists; please log out explicitly and try logging in again.
+control: doLogin(regen=false, hasUrl=true)
+control: RegisterReq: onode= node=[CKmqh] fup=true nks=false
+control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=false
+Received error: device with nodekey:08a9aa84cdb102a58f79d85740881369474162ed77ceb95cb87ad7c54e2edf4a already exists; please log out explicitly and try logging in again.
+control: doLogin(regen=false, hasUrl=true)
+[RATELIMIT] format("control: doLogin(regen=%v, hasUrl=%v)")
+control: RegisterReq: onode= node=[CKmqh] fup=true nks=false
+[RATELIMIT] format("control: RegisterReq: onode=%v node=%v fup=%v nks=%v")
+control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=false
+Received error: device with nodekey:08a9aa84cdb102a58f79d85740881369474162ed77ceb95cb87ad7c54e2edf4a already exists; please log out explicitly and try logging in again.
+[RATELIMIT] format("Received error: %v")
+control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=false
+[RATELIMIT] format("control: RegisterReq: got response; nodeKeyExpired=%v, machineAuthorized=%v; authURL=%v")
+[RATELIMIT] format("control: doLogin(regen=%v, hasUrl=%v)") (7 dropped)
+control: doLogin(regen=false, hasUrl=true)
+[RATELIMIT] format("control: RegisterReq: onode=%v node=%v fup=%v nks=%v") (7 dropped)
+control: RegisterReq: onode= node=[CKmqh] fup=true nks=false
+control: doLogin(regen=false, hasUrl=true)
+[RATELIMIT] format("control: doLogin(regen=%v, hasUrl=%v)")
+control: RegisterReq: onode= node=[CKmqh] fup=true nks=false
+[RATELIMIT] format("control: RegisterReq: onode=%v node=%v fup=%v nks=%v")
+[RATELIMIT] format("control: RegisterReq: got response; nodeKeyExpired=%v, machineAuthorized=%v; authURL=%v") (7 dropped)
+control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=false
+control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=false
+[RATELIMIT] format("control: RegisterReq: got response; nodeKeyExpired=%v, machineAuthorized=%v; authURL=%v")
+[RATELIMIT] format("Received error: %v") (9 dropped)
+Received error: device with nodekey:08a9aa84cdb102a58f79d85740881369474162ed77ceb95cb87ad7c54e2edf4a already exists; please log out explicitly and try logging in again.
+Received error: device with nodekey:08a9aa84cdb102a58f79d85740881369474162ed77ceb95cb87ad7c54e2edf4a already exists; please log out explicitly and try logging in again.
+[RATELIMIT] format("Received error: %v")
+[RATELIMIT] format("control: doLogin(regen=%v, hasUrl=%v)") (2 dropped)
+control: doLogin(regen=false, hasUrl=true)
+[RATELIMIT] format("control: RegisterReq: onode=%v node=%v fup=%v nks=%v") (2 dropped)
+control: RegisterReq: onode= node=[CKmqh] fup=true nks=false
+control: doLogin(regen=false, hasUrl=true)
+[RATELIMIT] format("control: doLogin(regen=%v, hasUrl=%v)")
+control: RegisterReq: onode= node=[CKmqh] fup=true nks=false
+[RATELIMIT] format("control: RegisterReq: onode=%v node=%v fup=%v nks=%v")
+[RATELIMIT] format("control: RegisterReq: got response; nodeKeyExpired=%v, machineAuthorized=%v; authURL=%v") (2 dropped)
+control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=false
+[RATELIMIT] format("Received error: %v") (1 dropped)
+Received error: device with nodekey:08a9aa84cdb102a58f79d85740881369474162ed77ceb95cb87ad7c54e2edf4a already exists; please log out explicitly and try logging in again.
+control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=false
+Received error: device with nodekey:08a9aa84cdb102a58f79d85740881369474162ed77ceb95cb87ad7c54e2edf4a already exists; please log out explicitly and try logging in again.
+[RATELIMIT] format("Received error: %v")
+[RATELIMIT] format("control: doLogin(regen=%v, hasUrl=%v)") (1 dropped)
+control: doLogin(regen=false, hasUrl=true)
+control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=false
+[RATELIMIT] format("control: RegisterReq: got response; nodeKeyExpired=%v, machineAuthorized=%v; authURL=%v")
+control: doLogin(regen=false, hasUrl=true)
+[RATELIMIT] format("control: doLogin(regen=%v, hasUrl=%v)")
+[RATELIMIT] format("control: RegisterReq: onode=%v node=%v fup=%v nks=%v") (2 dropped)
+control: RegisterReq: onode= node=[CKmqh] fup=true nks=false
+[RATELIMIT] format("Received error: %v") (1 dropped)
+Received error: device with nodekey:08a9aa84cdb102a58f79d85740881369474162ed77ceb95cb87ad7c54e2edf4a already exists; please log out explicitly and try logging in again.
+control: RegisterReq: onode= node=[CKmqh] fup=true nks=false
+[RATELIMIT] format("control: RegisterReq: got response; nodeKeyExpired=%v, machineAuthorized=%v; authURL=%v") (1 dropped)
+control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=false
+Received error: device with nodekey:08a9aa84cdb102a58f79d85740881369474162ed77ceb95cb87ad7c54e2edf4a already exists; please log out explicitly and try logging in again.
+[RATELIMIT] format("control: doLogin(regen=%v, hasUrl=%v)") (1 dropped)
+control: doLogin(regen=false, hasUrl=true)
+control: RegisterReq: onode= node=[CKmqh] fup=true nks=false
+control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=false
+Received error: device with nodekey:08a9aa84cdb102a58f79d85740881369474162ed77ceb95cb87ad7c54e2edf4a already exists; please log out explicitly and try logging in again.
+Start
+Backend: logs: be:8e6d437989a2505425f9088aa52631ad63244ab16169c32a8274a35f812e0cc4 fe:
+control: client.Login(0)
+control: client.Shutdown ...
+control: mapRoutine: exiting
+control: authRoutine: exiting
+control: updateRoutine: exiting
+control: doLogin(regen=false, hasUrl=false)
+control: Client.Shutdown done.
+control: trying bootstrapDNS("derp3h.tailscale.com", "172.237.66.30") for "controlplane.tailscale.com" ...
+control: bootstrapDNS("derp3h.tailscale.com", "172.237.66.30") for "controlplane.tailscale.com" = [192.200.0.103 2606:b740:49::108 2606:b740:49::104 192.200.0.108 2606:b740:49::115 192.200.0.107 2606:b740:49::105 192.200.0.112 192.200.0.104 192.200.0.102 2606:b740:49::111 192.200.0.106 192.200.0.111 192.200.0.113 2606:b740:49::110 192.200.0.105 192.200.0.115 2606:b740:49::109 2606:b740:49::116 192.200.0.101 2606:b740:49::113 192.200.0.116 2606:b740:49::101 2606:b740:49::114 2606:b740:49::107 2606:b740:49::103 2606:b740:49::102 192.200.0.109 2606:b740:49::106 192.200.0.110 2606:b740:49::112 192.200.0.114]
+control: control server key from https://controlplane.tailscale.com: ts2021=[fSeS+], legacy=[nlFWp]
+control: RegisterReq: onode= node=[CKmqh] fup=false nks=false
+control: controlhttp: forcing port 443 dial due to recent noise dial
+control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=false; authURL=true
+control: AuthURL is https://login.tailscale.com/a/12441cfe333149
+control: doLogin(regen=false, hasUrl=true)
+[RATELIMIT] format("control: doLogin(regen=%v, hasUrl=%v)")
+control: RegisterReq: onode= node=[CKmqh] fup=true nks=false
+[RATELIMIT] format("control: RegisterReq: onode=%v node=%v fup=%v nks=%v")
+Received auth URL: https://login.tailsc...
+popBrowserAuthNow(""): url=true, key-expired=false, seamless-key-renewal=false
+blockEngineUpdates(true)
+stopEngineAndWait...
+requestEngineStatusAndWait
+requestEngineStatusAndWait: waiting...
+Switching ipn state NoState -> NeedsLogin (WantRunning=true, nm=false)
+blockEngineUpdates(true)
+requestEngineStatusAndWait: got status update.
+stopEngineAndWait: done.
+logtail: dial "log.tailscale.io:443" failed: dial tcp: lookup log.tailscale.io on [::1]:53: read udp [::1]:33343->[::1]:53: read: connection refused (in 7ms), trying bootstrap...
+trying bootstrapDNS("derp19d.tailscale.com", "45.159.97.233") for "log.tailscale.io" ...
+bootstrapDNS("derp19d.tailscale.com", "45.159.97.233") for "log.tailscale.io" = [52.71.215.234 2600:1f18:429f:9305:590c:496f:7805:d86f]
+logtail: bootstrap dial succeeded
+logtail: upload succeeded after 1 failures and 53s
+control: RegisterReq: got response; nodeKeyExpired=false, machineAuthorized=true; authURL=false
+health(warnable=login-state): ok
+blockEngineUpdates(false)
+control: netmap: got new dial plan from control
+using tailnet default auto-update setting: true
+health(warnable=not-in-map-poll): ok
+EditPrefs check error: Auto-updates are not supported on this platform.
+failed to apply tailnet-wide default for auto-updates (true): Auto-updates are not supported on this platform.
+health(warnable=update-available): error: An update from version 1.78.1-ERR-BuildInfo to 1.96.4 is available.
+active login: bropines@gmail.com
+Switching ipn state NeedsLogin -> Starting (WantRunning=true, nm=true)
+magicsock: SetPrivateKey called (init)
+wgengine: Reconfig: configuring userspace WireGuard config (with 0/4 peers)
+wgengine: Reconfig: configuring router
+router: consolidated 7 routes down to 6
+wgengine: Reconfig: configuring DNS
+dns: Set: {DefaultResolvers:[] Routes:{axolotl-rigel.ts.net.:[] therodev.com.:[100.75.2.77] ts.net.:[199.247.155.53 2620:111:8007::53]}+65arpa SearchDomains:[axolotl-rigel.ts.net.] Hosts:5}
+peerapi: serving on http://100.110.223.75:1
+peerapi: serving on http://[fd7a:115c:a1e0::4e33:df4b]:1
+health(warnable=dns-read-os-config-failed): error: Tailscale failed to fetch the DNS configuration of your device: getting OS base config is not supported
+health(warnable=dns): error: getting OS base config is not supported
+portlist warning; ignoring: open /proc/net/tcp: permission denied
+portlist warning; ignoring: open /proc/net/tcp6: permission denied
+portlist warning; ignoring: open /proc/net/udp: permission denied
+portlist warning; ignoring: open /proc/net/udp6: permission denied
+netcheck: DetectCaptivePortal(found=false)
+magicsock: home DERP changing from derp-0 [0ms] to derp-14 [56ms]
+magicsock: home is now derp-14 (ams)
+magicsock: adding connection to derp-14 for home-keep-alive
+magicsock: 1 active derp conns: derp-14=cr0s,wr0s
+Switching ipn state Starting -> Running (WantRunning=true, nm=true)
+control: NetInfo: NetInfo{varies=false hairpin= ipv6=false ipv6os=true udp=true icmpv4=false derp=#14 portmap= link="" firewallmode=""}
+health(warnable=no-derp-home): ok
+derphttp.Client.Connect: connecting to derp-14 (ams)
+[Termux] Successfully parsed 4 interfaces from ifconfig
+magicsock: endpoints changed: 91.224.86.196:41305 (stun), 10.10.10.10:43662 (local), 10.117.194.38:43662 (local), 192.168.1.33:43662 (local)
+[Termux] Successfully parsed 4 interfaces from ifconfig
+magicsock: derp-14 connected; connGen=1
+health(warnable=no-derp-connection): ok
+
+❯ ./tailscale-termux up
+
+To authenticate, visit:
+
+        https://login.tailscale.com/a/12441cfe333149
+
+Success.
+❯ ./tailscale-termux status
+100.110.223.75  node-1               bropines@    android -
+100.75.2.77     msk-master-01-thero  tagged-devices linux   -
+100.76.93.40    node-3               bropines@    android offline
+100.84.48.72    node                 bropines@    android offline
+100.68.35.123   personal-pinus-poco-dev bropines@    android offline
+
+# Health check:
+#     - An update from version 1.78.1-ERR-BuildInfo to 1.96.4 is available.
+#     - Tailscale failed to fetch the DNS configuration of your device: getting OS base config is not supported
+#     - getting OS base config is not supported
