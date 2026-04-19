@@ -9,6 +9,7 @@ BIN_DIR="${PREFIX:-/data/data/com.termux/files/usr}/bin"
 STATE_DIR="$HOME/.tailscale"
 LOG_FILE="$STATE_DIR/tailscaled.log"
 SOCKET="$STATE_DIR/tailscaled.sock"
+ENV_FILE="$STATE_DIR/.env"
 
 echo "[1/3] Fetching latest release info..."
 LATEST_TAG=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep -Po '"tag_name": "\K.*?(?=")')
@@ -36,12 +37,40 @@ if pgrep -f "tailscaled.*$STATE_DIR" > /dev/null; then
     echo "tailscaled is already running."
     exit 0
 fi
-echo "Starting tailscaled (logging to $LOG_FILE)..."
-nohup "$BIN_DIR/tailscaled" \\
-    --statedir="$STATE_DIR" \\
-    --tun=userspace-networking \\
-    --socks5-server=localhost:1055 \\
-    --socket="$SOCKET" >> "$LOG_FILE" 2>&1 &
+
+if [ -f "$ENV_FILE" ]; then
+    echo "Loading environment from $ENV_FILE"
+    set -a
+    source "$ENV_FILE"
+    set +a
+fi
+
+USER_ARGS=("\$@")
+FINAL_ARGS=()
+
+has_flag() {
+    local pattern="\$1"
+    for arg in "\${USER_ARGS[@]}"; do
+        if [[ "\$arg" == "\$pattern"* ]]; then return 0; fi
+    done
+    return 1
+}
+
+has_flag "--statedir" || FINAL_ARGS+=("--statedir=$STATE_DIR")
+has_flag "--socket" || FINAL_ARGS+=("--socket=$SOCKET")
+has_flag "--tun" || FINAL_ARGS+=("--tun=userspace-networking")
+
+if ! has_flag "--socks5-server"; then
+    RANDOM_PORT=\$((RANDOM % 64511 + 1024))
+    FINAL_ARGS+=("--socks5-server=localhost:\$RANDOM_PORT")
+    echo "Using random SOCKS5 port: \$RANDOM_PORT"
+fi
+
+FINAL_ARGS+=("\${USER_ARGS[@]}")
+
+echo "Starting tailscaled..."
+nohup "$BIN_DIR/tailscaled" "\${FINAL_ARGS[@]}" >> "$LOG_FILE" 2>&1 &
+
 sleep 2
 if pgrep -f "tailscaled.*$STATE_DIR" > /dev/null; then
     echo "Done. Use 'tailscale-cli status' to check."
@@ -70,8 +99,46 @@ cat << EOF > "$BIN_DIR/tailscale-cli"
 exec "$BIN_DIR/tailscale" --socket="$SOCKET" "\$@"
 EOF
 
-chmod +x "$BIN_DIR/tailscaled-start" "$BIN_DIR/tailscaled-stop" "$BIN_DIR/tailscaled-log" "$BIN_DIR/tailscale-cli"
+# Tailscale TEST
+cat << 'EOF' > "$BIN_DIR/tailscale-test"
+#!/usr/bin/env bash
+echo "Tailscale Functional Test"
+echo "========================="
+
+PID=\$(pgrep -f "tailscaled.*/data/data/com.termux/files/home/.tailscale")
+if [ -z "\$PID" ]; then
+    echo "[-] Error: tailscaled is not running."
+    exit 1
+fi
+echo "[+] Daemon is running (PID: \$PID)."
+
+STATUS=\$(tailscale-cli status --json 2>/dev/null)
+if [[ \$? -eq 0 ]] && echo "\$STATUS" | grep -q '"BackendState": "Running"'; then
+    IP=\$(echo "\$STATUS" | grep -Po '"Self":.*?,"IPv4": "\K.*?(?=")')
+    echo "[+] Authenticated. Your IP: \$IP"
+else
+    echo "[-] Error: Not authenticated."
+    exit 1
+fi
+
+SOCKS_ADDR=\$(ps -p "\$PID" -o args= | grep -Po '--socks5-server=\K[^ ]+')
+if [ -z "\$SOCKS_ADDR" ]; then
+    echo "[-] Error: Could not detect SOCKS5 port."
+    exit 1
+fi
+echo "[*] Testing SOCKS5 on \$SOCKS_ADDR..."
+
+EXT_IP=\$(curl -s --socks5-hostname "\$SOCKS_ADDR" https://api.ipify.org)
+if [ -n "\$EXT_IP" ]; then
+    echo "[+] SOCKS5 OK (IP: \$EXT_IP)"
+else
+    echo "[-] SOCKS5 FAILED"
+fi
+echo "========================="
+EOF
+
+chmod +x "$BIN_DIR/tailscaled-start" "$BIN_DIR/tailscaled-stop" "$BIN_DIR/tailscaled-log" "$BIN_DIR/tailscale-cli" "$BIN_DIR/tailscale-test"
 
 echo "Installation Complete!"
 echo "=============================="
-echo "Commands: tailscaled-start, tailscaled-stop, tailscaled-log, tailscale-cli"
+echo "Commands: tailscaled-start, tailscaled-stop, tailscaled-log, tailscale-cli, tailscale-test"
