@@ -10,9 +10,21 @@ import (
 	"strings"
 
 	"tailscale.com/net/netmon"
+	"tailscale.com/hostinfo"
+	"tailscale.com/tailcfg"
 )
 
 func init() {
+	// 1. Spoof OS as Linux to bypass Hardware Attestation requirements
+	hostinfo.RegisterHostinfoNewHook(func(hi *tailcfg.Hostinfo) {
+		hi.OS = "linux"
+		if hi.Hostname == "" || hi.Hostname == "localhost" {
+			hi.Hostname = "tailscale-termux"
+		}
+		fmt.Printf("[Termux] Spoofing OS as: %s\n", hi.OS)
+	})
+
+	// 2. Register custom interface getter using ifconfig
 	netmon.RegisterInterfaceGetter(func() ([]netmon.Interface, error) {
 		out, err := exec.Command("ifconfig").Output()
 		if err != nil {
