@@ -1,18 +1,21 @@
-name: Build Tailscale for Termux (Android 11+)
+name: Build and Release Tailscale for Termux (Android 11+)
 
 on:
   push:
-    branches: [ "main" ]
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       ts_version:
-        description: 'Tailscale Version (e.g., v1.78.1)'
+        description: 'Tailscale Version (e.g., v1.96.5)'
         required: true
-        default: 'v1.78.1'
+        default: 'v1.96.5'
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,12 +28,28 @@ jobs:
 
       - name: Run Build Script
         env:
-          TS_VERSION: ${{ github.event.inputs.ts_version || 'v1.96.5' }}
+          TS_VERSION: ${{ github.event.inputs.ts_version || github.ref_name }}
         run: |
+          # If triggered by a tag like v1.96.5, use it. If by dispatch, use input.
           chmod +x ./build.sh
           ./build.sh
 
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            bin/tailscaled
+            bin/tailscale
+          body: |
+            Patched Tailscale binaries for Termux (Android 11+).
+            Based on Tailscale ${{ github.event.inputs.ts_version || github.ref_name }}.
+            Featuring the Netmon Patch (ifconfig parser).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload Artifacts
+        if: (!startsWith(github.ref, 'refs/tags/'))
         uses: actions/upload-artifact@v4
         with:
           name: tailscale-termux-cli-binaries
