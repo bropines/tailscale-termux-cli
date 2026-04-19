@@ -4,12 +4,11 @@ set -eu
 echo "Tailscale Termux CLI Installer"
 echo "=============================="
 
-# This script installs precompiled binaries (locally built or downloaded)
-# into your Termux environment and offers to set up background services.
-
-BIN_DIR="$HOME/bin"
-SV_DIR="$PREFIX/var/service/tailscaled"
+# Use Termux standard bin directory
+BIN_DIR="${PREFIX:-/data/data/com.termux/files/usr}/bin"
+SV_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/service/tailscaled"
 SRC_BIN_DIR="bin"
+STATE_DIR="$HOME/.tailscale"
 
 if [ ! -d "$SRC_BIN_DIR" ]; then
     echo "Error: 'bin' directory not found. Please run ./build.sh first."
@@ -23,10 +22,7 @@ cp "$SRC_BIN_DIR/tailscale" "$BIN_DIR/tailscale"
 chmod +x "$BIN_DIR/tailscaled" "$BIN_DIR/tailscale"
 
 echo "[2/3] Setting up background service..."
-# Check for termux-services and sv
 if command -v sv >/dev/null 2>&1; then
-    echo "-> termux-services detected."
-    # Use read if in interactive terminal
     if [ -t 0 ]; then
         echo -n "Would you like to install tailscaled as a Termux service (sv)? [y/N]: "
         read -r response
@@ -34,35 +30,56 @@ if command -v sv >/dev/null 2>&1; then
             mkdir -p "$SV_DIR/log"
             cp -r termux-services/tailscaled/* "$SV_DIR/"
             chmod +x "$SV_DIR/run" "$SV_DIR/log/run"
-            mkdir -p "$HOME/.tailscale"
+            mkdir -p "$STATE_DIR"
             sv-enable tailscaled || true
-            echo "-> Service installed and enabled (sv start tailscaled)."
-        else
-            echo "-> Service installation skipped."
+            echo "-> Service installed. Use 'sv start tailscaled' to run."
         fi
     fi
-else
-    echo "-> termux-services (sv) not installed. Skipping automatic service setup."
 fi
 
-echo "[3/3] Creating a helper launch script..."
-cat << 'EOF' > "$BIN_DIR/tailscaled-start"
+echo "[3/3] Creating helper scripts..."
+
+# Tailscaled START script
+cat << EOF > "$BIN_DIR/tailscaled-start"
 #!/usr/bin/env bash
-mkdir -p "$HOME/.tailscale"
+mkdir -p "$STATE_DIR"
+if pgrep -f "tailscaled.*$STATE_DIR" > /dev/null; then
+    echo "tailscaled is already running."
+    exit 0
+fi
 echo "Starting tailscaled in background..."
-nohup "$HOME/bin/tailscaled" \
-    --statedir="$HOME/.tailscale" \
-    --tun=userspace-networking \
-    --socks5-server=localhost:1055 \
-    >/dev/null 2>&1 &
-echo "Done. Use 'tailscale status' to check."
+"$BIN_DIR/tailscaled" \\
+    --statedir="$STATE_DIR" \\
+    --tun=userspace-networking \\
+    --socks5-server=localhost:1055 \\
+    --socket="$STATE_DIR/tailscaled.sock" > /dev/null 2>&1 &
+sleep 2
+if pgrep -f "tailscaled.*$STATE_DIR" > /dev/null; then
+    echo "Done. Use 'tailscale status' to check."
+else
+    echo "Error: tailscaled failed to start."
+    exit 1
+fi
 EOF
-chmod +x "$BIN_DIR/tailscaled-start"
+
+# Tailscaled STOP script
+cat << EOF > "$BIN_DIR/tailscaled-stop"
+#!/usr/bin/env bash
+echo "Stopping tailscaled..."
+pkill -f "tailscaled.*$STATE_DIR" || echo "tailscaled was not running."
+EOF
+
+# Aliased tailscale CLI
+cat << EOF > "$BIN_DIR/tailscale-cli"
+#!/usr/bin/env bash
+exec "$BIN_DIR/tailscale" --socket="$STATE_DIR/tailscaled.sock" "\$@"
+EOF
+
+chmod +x "$BIN_DIR/tailscaled-start" "$BIN_DIR/tailscaled-stop" "$BIN_DIR/tailscale-cli"
 
 echo "Installation Complete!"
 echo "=============================="
-echo "You can now start Tailscale with one command:"
-echo "  tailscaled-start"
-echo
-echo "To authenticate:"
-echo "  tailscale up"
+echo "Commands:"
+echo "  tailscaled-start  - Start daemon"
+echo "  tailscaled-stop   - Stop daemon"
+echo "  tailscale-cli up  - Connect"

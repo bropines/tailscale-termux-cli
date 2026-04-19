@@ -4,63 +4,65 @@ set -eu
 echo "Tailscale Termux Remote Installer"
 echo "=============================="
 
-# This script downloads and installs precompiled Tailscale binaries
-# for Termux (Android 11+) directly from GitHub Releases.
-
 REPO="bropines/tailscale-termux-cli"
-TMP_DIR="$(mktemp -d)"
-BIN_DIR="$HOME/bin"
+BIN_DIR="${PREFIX:-/data/data/com.termux/files/usr}/bin"
+STATE_DIR="$HOME/.tailscale"
 
 echo "[1/3] Fetching latest release info..."
-# Use curl/grep/sed as we don't assume 'jq' is installed in a fresh Termux
 LATEST_TAG=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep -Po '"tag_name": "\K.*?(?=")')
 
 if [ -z "$LATEST_TAG" ]; then
-    echo "Error: Could not find any releases. Please build it yourself or check the repo."
+    echo "Error: No releases found."
     exit 1
 fi
 echo "-> Latest Release: $LATEST_TAG"
 
-echo "[2/3] Downloading binaries..."
-# Github Actions artifacts aren't public as assets by default, we need a release.
-# This script assumes assets 'tailscaled' and 'tailscale' exist in the release.
-# If they are zipped, we would need to unzip them. Let's assume they are uploaded separately.
-# Actually, GitHub Actions artifacts are not available as public direct URLs.
-# So this script is for once you have a real GitHub Release.
-
-DOWNLOAD_URL_DAEMON="https://github.com/$REPO/releases/download/$LATEST_TAG/tailscaled"
-DOWNLOAD_URL_CLI="https://github.com/$REPO/releases/download/$LATEST_TAG/tailscale"
-
+echo "[2/3] Downloading binaries to $BIN_DIR..."
 mkdir -p "$BIN_DIR"
-
-echo "-> Downloading tailscaled..."
-if ! wget -q --show-progress -O "$BIN_DIR/tailscaled" "$DOWNLOAD_URL_DAEMON"; then
-    echo "Error: Failed to download tailscaled asset. Ensure the release has binary assets."
-    exit 1
-fi
-
-echo "-> Downloading tailscale..."
-if ! wget -q --show-progress -O "$BIN_DIR/tailscale" "$DOWNLOAD_URL_CLI"; then
-    echo "Error: Failed to download tailscale asset. Ensure the release has binary assets."
-    exit 1
-fi
-
+wget -q --show-progress -O "$BIN_DIR/tailscaled" "https://github.com/$REPO/releases/download/$LATEST_TAG/tailscaled"
+wget -q --show-progress -O "$BIN_DIR/tailscale" "https://github.com/$REPO/releases/download/$LATEST_TAG/tailscale"
 chmod +x "$BIN_DIR/tailscaled" "$BIN_DIR/tailscale"
 
-echo "[3/3] Setting up start script..."
-cat << 'EOF' > "$BIN_DIR/tailscaled-start"
+echo "[3/3] Setting up helper scripts..."
+
+# Tailscaled START
+cat << EOF > "$BIN_DIR/tailscaled-start"
 #!/usr/bin/env bash
-mkdir -p "$HOME/.tailscale"
+mkdir -p "$STATE_DIR"
+if pgrep -f "tailscaled.*$STATE_DIR" > /dev/null; then
+    echo "tailscaled is already running."
+    exit 0
+fi
 echo "Starting tailscaled in background..."
-nohup "$HOME/bin/tailscaled" \
-    --statedir="$HOME/.tailscale" \
-    --tun=userspace-networking \
-    --socks5-server=localhost:1055 \
-    >/dev/null 2>&1 &
-echo "Done. Use 'tailscale status' to check."
+"$BIN_DIR/tailscaled" \\
+    --statedir="$STATE_DIR" \\
+    --tun=userspace-networking \\
+    --socks5-server=localhost:1055 \\
+    --socket="$STATE_DIR/tailscaled.sock" > /dev/null 2>&1 &
+sleep 2
+if pgrep -f "tailscaled.*$STATE_DIR" > /dev/null; then
+    echo "Done. Use 'tailscale status' to check."
+else
+    echo "Error: tailscaled failed to start."
+    exit 1
+fi
 EOF
-chmod +x "$BIN_DIR/tailscaled-start"
+
+# Tailscaled STOP
+cat << EOF > "$BIN_DIR/tailscaled-stop"
+#!/usr/bin/env bash
+echo "Stopping tailscaled..."
+pkill -f "tailscaled.*$STATE_DIR" || echo "tailscaled was not running."
+EOF
+
+# Aliased tailscale CLI
+cat << EOF > "$BIN_DIR/tailscale-cli"
+#!/usr/bin/env bash
+exec "$BIN_DIR/tailscale" --socket="$STATE_DIR/tailscaled.sock" "\$@"
+EOF
+
+chmod +x "$BIN_DIR/tailscaled-start" "$BIN_DIR/tailscaled-stop" "$BIN_DIR/tailscale-cli"
 
 echo "Installation Complete!"
 echo "=============================="
-echo "You can now use: tailscaled-start"
+echo "Commands: tailscaled-start, tailscaled-stop, tailscale-cli"

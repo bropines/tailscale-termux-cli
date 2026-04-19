@@ -45,23 +45,25 @@ echo "[2/3] Applying netmon patch (ifconfig parser)..."
 cp "$PATCH_DIR/fix_android_netmon.go" "$SRC_DIR/cmd/tailscaled/"
 
 cd "$SRC_DIR"
-# Ensure anet is available for the build even if we use ifconfig parser (dependency safety)
+# Ensure anet is available for the build
 go get github.com/wlynxg/anet@v0.0.5
 go mod tidy
 
 # 5. Compiling
 echo "[3/3] Compiling binaries..."
-TAGS="ts_omit_systray,ts_omit_kube,ts_omit_aws,ts_omit_bird,ts_omit_desktop_sessions,ts_omit_networkmanager,ts_omit_sdnotify"
+# ts_no_clipboard: fix SIGSYS crash in Termux (faccessat2 issues)
+TAGS="ts_no_clipboard,ts_omit_systray,ts_omit_kube,ts_omit_aws,ts_omit_bird,ts_omit_desktop_sessions,ts_omit_networkmanager,ts_omit_sdnotify"
 
 export GOOS=android
 export GOARCH=arm64
 export CGO_ENABLED=0
 
+# Use -buildmode=pie for better Android compatibility
 echo "-> Building tailscaled..."
-go build -trimpath -tags "$TAGS" -ldflags="-s -w -checklinkname=0" -o "$OUT_DIR/tailscaled" ./cmd/tailscaled
+go build -trimpath -buildmode=pie -tags "$TAGS" -ldflags="-s -w -checklinkname=0" -o "$OUT_DIR/tailscaled" ./cmd/tailscaled
 
 echo "-> Building tailscale CLI..."
-go build -trimpath -tags "$TAGS" -ldflags="-s -w -checklinkname=0" -o "$OUT_DIR/tailscale" ./cmd/tailscale
+go build -trimpath -buildmode=pie -tags "$TAGS" -ldflags="-s -w -checklinkname=0" -o "$OUT_DIR/tailscale" ./cmd/tailscale
 
 cd "$WORKDIR"
 echo "Build complete! Binaries are in the 'bin' directory."
