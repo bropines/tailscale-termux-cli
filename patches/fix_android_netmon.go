@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/netip"
@@ -10,6 +11,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"tailscale.com/hostinfo"
 	"tailscale.com/net/netmon"
@@ -25,15 +27,22 @@ func init() {
 			hi.Hostname = "tailscale-termux"
 		}
 		fmt.Printf("[Termux] Masking App as: %s, DeviceModel: %s\n", hi.App, hi.DeviceModel)
-
-		// Set DNS fallback early
-		if os.Getenv("TS_DEBUG_NAMESERVERS") == "" {
-			os.Setenv("TS_DEBUG_NAMESERVERS", "8.8.8.8,1.1.1.1")
-			fmt.Printf("[Termux] No DNS detected, using fallback: 8.8.8.8, 1.1.1.1\n")
-		}
 	})
 
-	// 2. Register custom interface getter using ifconfig
+	// 2. NUKE the default Go resolver.
+	// This forces ALL DNS lookups in the binary to use 8.8.8.8 via UDP,
+	// bypassing the broken system DNS/netlink in Termux.
+	net.DefaultResolver = &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			var d net.Dialer
+			// Hardcode fallback to Google DNS for the entire binary
+			return d.DialContext(ctx, "udp", "8.8.8.8:53")
+		},
+	}
+	fmt.Printf("[Termux] Global DNS redirected to 8.8.8.8\n")
+
+	// 3. Register custom interface getter using ifconfig
 	netmon.RegisterInterfaceGetter(func() ([]netmon.Interface, error) {
 		out, err := exec.Command("ifconfig").Output()
 		if err != nil {
@@ -110,10 +119,4 @@ func init() {
 		if current != nil { ifs = append(ifs, *current) }
 		return ifs, nil
 	})
-}
-
-// Global variable to ensure we can patch DNS even deeper if needed
-var termuxNameservers = []netip.Addr{
-	netip.MustParseAddr("8.8.8.8"),
-	netip.MustParseAddr("1.1.1.1"),
 }
