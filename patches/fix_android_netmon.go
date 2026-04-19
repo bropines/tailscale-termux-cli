@@ -15,13 +15,14 @@ import (
 )
 
 func init() {
-	// 1. Spoof OS as Linux to bypass Hardware Attestation requirements
+	// 1. Mask as CLI to bypass mobile-specific policies (like Hardware Attestation)
 	hostinfo.RegisterHostinfoNewHook(func(hi *tailcfg.Hostinfo) {
-		hi.OS = "linux"
+		hi.App = "tailscale-cli"
+		hi.DeviceModel = "Termux"
 		if hi.Hostname == "" || hi.Hostname == "localhost" {
 			hi.Hostname = "tailscale-termux"
 		}
-		fmt.Printf("[Termux] Spoofing OS as: %s\n", hi.OS)
+		fmt.Printf("[Termux] Masking App as: %s, DeviceModel: %s\n", hi.App, hi.DeviceModel)
 	})
 
 	// 2. Register custom interface getter using ifconfig
