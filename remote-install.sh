@@ -4,6 +4,10 @@ set -eu
 echo "Tailscale Termux Remote Installer"
 echo "=============================="
 
+# if anyone can do a check for this instead of hardcoding it to check, that would be amazing. I am too lazy to write this honestly and just decided to make a quick hot patch to make a pull request. Thank you
+pkg install wget
+mkdir -p ~/.tailscale
+
 REPO="bropines/tailscale-termux-cli"
 BIN_DIR="${PREFIX:-/data/data/com.termux/files/usr}/bin"
 STATE_DIR="$HOME/.tailscale"
