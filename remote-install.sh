@@ -4,13 +4,41 @@ set -eu
 echo "Tailscale Termux Remote Installer"
 echo "=============================="
 
-# if anyone can do a check for this instead of hardcoding it to check, that would be amazing. I am too lazy to write this honestly and just decided to make a quick hot patch to make a pull request. Thank you
-pkg install wget
-mkdir -p ~/.tailscale
+echo "[*] Checking requirements..."
+# Формат: "команда:пакет_termux"
+REQUIREMENTS=(
+    "curl:curl"
+    "wget:wget"
+    "grep:grep"
+    "pkill:procps"
+    "nohup:coreutils"
+)
+
+MISSING_PKGS=""
+
+for req in "${REQUIREMENTS[@]}"; do
+    cmd="${req%%:*}"
+    pkg="${req##*:}"
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        MISSING_PKGS="$MISSING_PKGS $pkg"
+    fi
+done
+
+if [ -n "$MISSING_PKGS" ]; then
+    echo " -> Installing missing dependencies:$MISSING_PKGS"
+    pkg install -y $MISSING_PKGS
+else
+    echo " -> All required dependencies are present."
+fi
+
+STATE_DIR="$HOME/.tailscale"
+if [ ! -d "$STATE_DIR" ]; then
+    echo " -> Creating state directory: $STATE_DIR"
+    mkdir -p "$STATE_DIR"
+fi
 
 REPO="bropines/tailscale-termux-cli"
 BIN_DIR="${PREFIX:-/data/data/com.termux/files/usr}/bin"
-STATE_DIR="$HOME/.tailscale"
 LOG_FILE="$STATE_DIR/tailscaled.log"
 SOCKET="$STATE_DIR/tailscaled.sock"
 ENV_FILE="$STATE_DIR/.env"
