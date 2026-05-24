@@ -5,11 +5,12 @@ on:
     - cron: '0 0 * * *' # Every day at midnight
   workflow_dispatch: # Manual trigger
 
+permissions:
+  contents: write
+
 jobs:
   check-updates:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     outputs:
       new_version: ${{ steps.compare.outputs.new_version }}
       tag: ${{ steps.upstream.outputs.tag }}
