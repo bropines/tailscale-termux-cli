@@ -10,6 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      new_version: ${{ steps.compare.outputs.new_version }}
+      tag: ${{ steps.upstream.outputs.tag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -30,11 +33,27 @@ jobs:
           echo "tag=$LOCAL_TAG" >> $GITHUB_OUTPUT
           echo "Found local tag: $LOCAL_TAG"
 
+      - name: Compare tags
+        id: compare
+        run: |
+          if [ "${{ steps.upstream.outputs.tag }}" != "${{ steps.local.outputs.tag }}" ]; then
+            echo "new_version=true" >> $GITHUB_OUTPUT
+          else
+            echo "new_version=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Sync and Release
-        if: steps.upstream.outputs.tag != steps.local.outputs.tag
+        if: steps.compare.outputs.new_version == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           echo "New version detected: ${{ steps.upstream.outputs.tag }}. Creating tag..."
           git tag ${{ steps.upstream.outputs.tag }}
           git push origin ${{ steps.upstream.outputs.tag }}
+
+  build:
+    needs: check-updates
+    if: needs.check-updates.outputs.new_version == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      ts_version: ${{ needs.check-updates.outputs.tag }}

@@ -51,6 +51,11 @@ fi
 # 4. Applying patch
 echo "[2/3] Applying netmon patch (ifconfig parser)..."
 cp "$PATCH_DIR/fix_android_netmon.go" "$SRC_DIR/cmd/tailscaled/"
+
+echo "-> Enabling cert endpoint on Android..."
+sed 's/!android && //g' "$SRC_DIR/ipn/localapi/cert.go" > "$SRC_DIR/ipn/localapi/cert.go.tmp" && mv "$SRC_DIR/ipn/localapi/cert.go.tmp" "$SRC_DIR/ipn/localapi/cert.go"
+sed 's/ || android//g' "$SRC_DIR/ipn/localapi/disabled_stubs.go" > "$SRC_DIR/ipn/localapi/disabled_stubs.go.tmp" && mv "$SRC_DIR/ipn/localapi/disabled_stubs.go.tmp" "$SRC_DIR/ipn/localapi/disabled_stubs.go"
+
 # Apply DNS manager patch
 cd "$SRC_DIR"
 
@@ -61,7 +66,7 @@ go mod tidy
 # 5. Compiling
 echo "[3/3] Compiling binaries..."
 # ts_no_clipboard & ts_omit_taildrop: fix crashes/panics in Termux environment
-TAGS="ts_no_clipboard,ts_omit_taildrop,ts_omit_systray,ts_omit_kube,ts_omit_aws,ts_omit_bird,ts_omit_desktop_sessions,ts_omit_networkmanager,ts_omit_sdnotify"
+TAGS="ts_no_clipboard,ts_omit_taildrop,ts_omit_systray,ts_omit_kube,ts_omit_aws,ts_omit_bird,ts_omit_desktop_sessions,ts_omit_networkmanager,ts_omit_sdnotify,ts_omit_ssh"
 
 export GOOS=android
 export GOARCH=arm64
