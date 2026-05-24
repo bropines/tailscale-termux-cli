@@ -1,5 +1,8 @@
 # Tailscale Termux CLI (Android 11+ Ready)
 
+> [!WARNING]
+> **Git History Rewrite**: The repository commit history was rewritten on May 24, 2026, to remove accidentally committed debug logs. If you have an existing clone, please run `git fetch origin && git reset --hard origin/main` to sync your local copy with the updated history.
+
 This project provides a patched version of the official Tailscale CLI (tailscale and tailscaled) designed specifically to run inside Termux on Android 11 and above.
 
 ## The Netmon Patch
