@@ -75,10 +75,10 @@ export CGO_ENABLED=0
 
 # Use -buildmode=pie for better Android compatibility
 echo "-> Building tailscaled..."
-go build -trimpath -buildmode=pie -tags "$TAGS" -ldflags="-s -w -checklinkname=0" -o "$OUT_DIR/tailscaled" ./cmd/tailscaled
+go build -trimpath -tags "$TAGS" -ldflags="-s -w -checklinkname=0" -o "$OUT_DIR/tailscaled" ./cmd/tailscaled
 
 echo "-> Building tailscale CLI..."
-go build -trimpath -buildmode=pie -tags "$TAGS" -ldflags="-s -w -checklinkname=0" -o "$OUT_DIR/tailscale" ./cmd/tailscale
+go build -trimpath -tags "$TAGS" -ldflags="-s -w -checklinkname=0" -o "$OUT_DIR/tailscale" ./cmd/tailscale
 
 cd "$WORKDIR"
 echo "Build complete! Binaries are in the 'bin' directory."
