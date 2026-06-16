@@ -1,9 +1,0 @@
-Package: tailscale-termux
-Version: 1.100.0
-Architecture: x86_64
-Maintainer: bropines <https://github.com/bropines/tailscale-termux-cli>
-Depends: termux-services, curl, wget, procps, coreutils
-Section: net
-Priority: optional
-Homepage: https://github.com/bropines/tailscale-termux-cli
-Description: Patched version of Tailscale CLI for Termux on Android 11+
