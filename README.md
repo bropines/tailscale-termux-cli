@@ -30,19 +30,35 @@ If you have Go installed in Termux, you can build it yourself:
 
 ## Usage
 
-1. **Start the daemon:**
+1. **Start the daemon (manually):**
    Run the helper script created during installation:
    ```bash
    tailscaled-start
    ```
    *Note: By default, this starts the daemon in the background with a random SOCKS5 port.*
 
-2. **Authenticate:**
+2. **Run as a persistent system service (via termux-services):**
+   We package integration with `termux-services` (runit). You can manage the background service easily:
+   * **Enable auto-start on boot & run service**:
+     ```bash
+     tailscaled-start --service=on
+     ```
+   * **Disable auto-start & stop service**:
+     ```bash
+     tailscaled-start --service=off
+     ```
+   * **Check service status**:
+     ```bash
+     tailscaled-start --service=status
+     ```
+   *(Alternatively, you can use standard commands: `sv-enable tailscaled`, `sv-disable tailscaled`, and `sv status tailscaled`).*
+
+3. **Authenticate:**
    ```bash
    tailscale-cli up
    ```
 
-3. **Check status/test:**
+4. **Check status/test:**
    ```bash
    tailscale-test
    ```
@@ -69,11 +85,15 @@ TS_EXTRA_ARGS="--hostname=termux-node"
 ```
 
 ## Helper Commands
-- `tailscaled-start`: Starts the daemon with your config.
+- `tailscaled-start`: Starts the daemon manually or controls its termux-service status (`--service=on/off/status`).
 - `tailscaled-stop`: Stops the running daemon.
 - `tailscaled-log`: Follows the daemon logs.
 - `tailscale-cli`: Alias for `tailscale` that uses the correct socket.
 - `tailscale-test`: Runs a functional test of your setup.
+
+## Shell Integrations (Autocomplete)
+
+The package automatically installs shell autocompletions for **Bash**, **Zsh**, and **Fish** for both the `tailscale` and `tailscale-cli` commands. Once installed, autocompletions will work natively after restarting your shell session.
 
 ## Credits & Attribution
 - **Core Logic:** [Tailscale Team](https://github.com/tailscale/tailscale).

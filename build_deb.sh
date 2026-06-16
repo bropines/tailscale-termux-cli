@@ -32,6 +32,7 @@ fi
 WORKDIR="$(pwd)"
 DIST_DIR="$WORKDIR/dist"
 BIN_DIR="$WORKDIR/bin"
+SRC_DIR="$WORKDIR/tailscale_src"
 
 build_deb_for_arch() {
     local arch="$1"
@@ -76,12 +77,40 @@ build_deb_for_arch() {
     cp "$WORKDIR/termux-services/tailscaled/run" "$service_dir/run"
     chmod +x "$service_dir/run"
 
+    # Create 'down' file so runit does not auto-start the service upon package installation
+    touch "$service_dir/down"
+
     # Log service run script
     cat << 'EOF' > "$service_dir/log/run"
 #!/data/data/com.termux/files/usr/bin/sh
 exec svlogd -tt /data/data/com.termux/files/usr/var/log/tailscaled
 EOF
     chmod +x "$service_dir/log/run"
+
+    # 2.5 Setup shell autocompletions
+    local completions_dir="$pkg_dir/data/data/com.termux/files/usr/share"
+    local bash_comp_dir="$completions_dir/bash-completion/completions"
+    local zsh_comp_dir="$completions_dir/zsh/site-functions"
+    local fish_comp_dir="$completions_dir/fish/vendor_completions.d"
+
+    mkdir -p "$bash_comp_dir" "$zsh_comp_dir" "$fish_comp_dir"
+
+    echo "-> Generating shell completions..."
+    cd "$SRC_DIR"
+    go run ./cmd/tailscale completion bash > "$bash_comp_dir/tailscale"
+    go run ./cmd/tailscale completion zsh > "$zsh_comp_dir/_tailscale"
+    go run ./cmd/tailscale completion fish > "$fish_comp_dir/tailscale.fish"
+    cd "$WORKDIR"
+
+    # Register tailscale-cli shell integrations
+    echo "complete -F _tailscale tailscale-cli" > "$bash_comp_dir/tailscale-cli"
+    
+    cat << 'EOF' > "$zsh_comp_dir/_tailscale-cli"
+#compdef tailscale-cli
+compdef tailscale-cli=tailscale
+EOF
+
+    echo "complete -c tailscale-cli -w tailscale" > "$fish_comp_dir/tailscale-cli.fish"
 
     # 3. Create helper scripts in bin
     local helper_start="$usr_bin_dir/tailscaled-start"
@@ -103,6 +132,59 @@ SOCKET="$STATE_DIR/tailscaled.sock"
 ENV_FILE="$STATE_DIR/.env"
 SOCKS_ADDR_FILE="$STATE_DIR/socks_addr"
 BIN_DIR="${PREFIX:-/data/data/com.termux/files/usr}/bin"
+
+# Help message
+show_help() {
+    echo "Tailscale Termux Start Helper"
+    echo "============================="
+    echo "Usage: tailscaled-start [options]"
+    echo ""
+    echo "Options:"
+    echo "  --service=on      Enable tailscaled auto-start via termux-services"
+    echo "  --service=off     Disable tailscaled auto-start via termux-services"
+    echo "  --service=status  Check the termux-services status of tailscaled"
+    echo "  --help, -h        Show this help message"
+    echo ""
+    echo "Any other flags will be passed directly to the tailscaled daemon."
+}
+
+# Check for service control arguments
+if [ $# -gt 0 ]; then
+    case "$1" in
+        --service=on)
+            if ! command -v sv-enable >/dev/null 2>&1; then
+                echo "Error: termux-services is not installed or initialized."
+                exit 1
+            fi
+            echo "Enabling tailscaled in termux-services..."
+            sv-enable tailscaled
+            sv up tailscaled
+            exit 0
+            ;;
+        --service=off)
+            if ! command -v sv-disable >/dev/null 2>&1; then
+                echo "Error: termux-services is not installed or initialized."
+                exit 1
+            fi
+            echo "Disabling tailscaled in termux-services..."
+            sv-disable tailscaled
+            sv down tailscaled
+            exit 0
+            ;;
+        --service=status)
+            if ! command -v sv >/dev/null 2>&1; then
+                echo "Error: termux-services is not installed or initialized."
+                exit 1
+            fi
+            sv status tailscaled
+            exit 0
+            ;;
+        --help|-h)
+            show_help
+            exit 0
+            ;;
+    esac
+fi
 
 mkdir -p "$STATE_DIR"
 if pgrep -f "tailscaled.*$STATE_DIR" > /dev/null; then
