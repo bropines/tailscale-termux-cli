@@ -75,15 +75,14 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 wget -q --show-progress -O "$TMP_DIR/$DEB_FILE" "$DEB_URL"
 
-echo "[3/3] Installing package via apt/dpkg..."
+echo "[3/3] Installing package via dpkg..."
 # Stop existing daemon if running
 pkill -f tailscaled || true
 
-# Install using apt if possible to resolve dependencies automatically, otherwise fallback to dpkg
+# Use dpkg -i to avoid privilege-dropping metadata read errors in user directories, then fix deps
+dpkg -i "$TMP_DIR/$DEB_FILE"
 if command -v apt >/dev/null 2>&1; then
-    apt install -y "$TMP_DIR/$DEB_FILE"
-else
-    dpkg -i "$TMP_DIR/$DEB_FILE"
+    apt install -f -y
 fi
 
 echo "============================================="
