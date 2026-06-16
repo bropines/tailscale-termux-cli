@@ -296,6 +296,8 @@ Version: $DEB_VERSION
 Architecture: $deb_arch
 Maintainer: bropines <https://github.com/bropines/tailscale-termux-cli>
 Depends: termux-services, curl, wget, procps, coreutils
+Conflicts: tailscale
+Replaces: tailscale
 Section: net
 Priority: optional
 Homepage: https://github.com/bropines/tailscale-termux-cli
