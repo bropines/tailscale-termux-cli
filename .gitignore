@@ -17,3 +17,6 @@ tailscale_1.78.1_arm64.tgz
 tailscale_1.96.4_arm64/
 tailscale_1.78.1_arm64/
 EOF
+dist/
+*.deb
+
