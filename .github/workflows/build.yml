@@ -52,14 +52,8 @@ jobs:
         with:
           tag_name: ${{ inputs.ts_version || github.event.inputs.ts_version || github.ref_name }}
           files: |
-            bin/aarch64/tailscaled
-            bin/aarch64/tailscale
-            bin/arm/tailscaled
-            bin/arm/tailscale
-            bin/i686/tailscaled
-            bin/i686/tailscale
-            bin/x86_64/tailscaled
-            bin/x86_64/tailscale
+            bin/tailscaled-*
+            bin/tailscale-*
             dist/*.deb
           body: |
             Patched Tailscale binaries and .deb packages for Termux (Android 11+).

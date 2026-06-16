@@ -257,14 +257,35 @@ echo "========================="
 EOF
     chmod +x "$helper_test"
 
-    # Helper: tailscale-update (for package-based install, notify to use apt/pkg)
+    # Helper: tailscale-update (checks dpkg version and runs remote-install.sh if out of date)
     cat << 'EOF' > "$helper_update"
 #!/usr/bin/env bash
-# Helper script to check for updates
 set -eu
 
-echo "This version of Tailscale was installed via a package manager."
-echo "Please update it by running: pkg update && pkg upgrade tailscale-termux"
+echo "Checking for updates..."
+REPO="bropines/tailscale-termux-cli"
+LATEST_TAG=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep -Po '"tag_name": "\K.*?(?=")')
+
+if [ -z "$LATEST_TAG" ]; then
+    echo "Error: Could not retrieve latest release version."
+    exit 1
+fi
+
+CURRENT_VERSION="unknown"
+if command -v dpkg >/dev/null 2>&1; then
+    CURRENT_VERSION=$(dpkg-query -W -f='${Version}' tailscale-termux 2>/dev/null || echo "unknown")
+fi
+
+CLEAN_LATEST=$(echo "$LATEST_TAG" | sed 's/^v//' | tr '-' '~')
+
+if [ "$CLEAN_LATEST" = "$CURRENT_VERSION" ]; then
+    echo "You are already on the latest version ($CURRENT_VERSION)."
+    exit 0
+fi
+
+echo "New version available: $LATEST_TAG (Current: $CURRENT_VERSION)"
+echo "Updating via remote installer..."
+curl -fsSL "https://raw.githubusercontent.com/$REPO/main/remote-install.sh" | bash
 EOF
     chmod +x "$helper_update"
 

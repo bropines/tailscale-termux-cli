@@ -148,6 +148,10 @@ build_for_arch() {
 
     # Compile tailscaled daemon
     go build "${build_args[@]}" -o "$arch_out_dir/tailscaled" ./cmd/tailscaled
+
+    # Copy to root bin folder with architecture suffixes for release compatibility
+    cp "$arch_out_dir/tailscale" "$OUT_DIR/tailscale-$arch"
+    cp "$arch_out_dir/tailscaled" "$OUT_DIR/tailscaled-$arch"
 }
 
 if [ "$TARGET_ARCH" = "all" ]; then
