@@ -64,7 +64,7 @@ esac
 echo "-> Detected architecture: $ARCH"
 
 # Convert LATEST_TAG for deb version (e.g. v1.100.0 -> 1.100.0)
-DEB_VERSION=$(echo "$LATEST_TAG" | sed 's/^v//' | tr '-' '~')
+DEB_VERSION=$(echo "$LATEST_TAG" | sed 's/^v//' | tr '-' '.')
 DEB_FILE="tailscale-termux_${DEB_VERSION}_${ARCH}.deb"
 DEB_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$DEB_FILE"
 

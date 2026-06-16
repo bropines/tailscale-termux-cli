@@ -11,7 +11,7 @@ if [ -z "${TS_VERSION:-}" ]; then
     TS_VERSION=$(git describe --tags --always 2>/dev/null || echo "1.100.0")
 fi
 # Clean version string for debian (replace starting 'v' if present, replace dashes with tildes)
-DEB_VERSION=$(echo "$TS_VERSION" | sed 's/^v//' | tr '-' '~')
+DEB_VERSION=$(echo "$TS_VERSION" | sed 's/^v//' | tr '-' '.')
 
 TARGET_ARCH="${1:-}"
 if [ -z "$TARGET_ARCH" ]; then
@@ -97,9 +97,12 @@ EOF
 
     echo "-> Generating shell completions..."
     cd "$SRC_DIR"
-    go run ./cmd/tailscale completion bash > "$bash_comp_dir/tailscale"
-    go run ./cmd/tailscale completion zsh > "$zsh_comp_dir/_tailscale"
-    go run ./cmd/tailscale completion fish > "$fish_comp_dir/tailscale.fish"
+    # Build host-native tailscale binary once to generate completions quickly
+    go build -o "$WORKDIR/tailscale-host-$arch" ./cmd/tailscale
+    "$WORKDIR/tailscale-host-$arch" completion bash > "$bash_comp_dir/tailscale"
+    "$WORKDIR/tailscale-host-$arch" completion zsh > "$zsh_comp_dir/_tailscale"
+    "$WORKDIR/tailscale-host-$arch" completion fish > "$fish_comp_dir/tailscale.fish"
+    rm "$WORKDIR/tailscale-host-$arch"
     cd "$WORKDIR"
 
     # Register tailscale-cli shell integrations
@@ -358,7 +361,7 @@ if command -v dpkg >/dev/null 2>&1; then
     CURRENT_VERSION=$(dpkg-query -W -f='${Version}' tailscale-termux 2>/dev/null || echo "unknown")
 fi
 
-CLEAN_LATEST=$(echo "$LATEST_TAG" | sed 's/^v//' | tr '-' '~')
+CLEAN_LATEST=$(echo "$LATEST_TAG" | sed 's/^v//' | tr '-' '.')
 
 if [ "$CLEAN_LATEST" = "$CURRENT_VERSION" ]; then
     echo "You are already on the latest version ($CURRENT_VERSION)."
@@ -392,10 +395,20 @@ EOF
     echo "-> Package created successfully: ${pkg_dir}.deb"
 }
 
+# Ensure all required binaries are built before packaging to avoid race conditions
+if [ "$TARGET_ARCH" = "all" ]; then
+    ./build.sh all
+else
+    if [ ! -f "$BIN_DIR/$TARGET_ARCH/tailscale" ] || [ ! -f "$BIN_DIR/$TARGET_ARCH/tailscaled" ]; then
+        ./build.sh "$TARGET_ARCH"
+    fi
+fi
+
 if [ "$TARGET_ARCH" = "all" ]; then
     for arch in aarch64 arm i686 x86_64; do
-        build_deb_for_arch "$arch"
+        build_deb_for_arch "$arch" &
     done
+    wait
 else
     build_deb_for_arch "$TARGET_ARCH"
 fi

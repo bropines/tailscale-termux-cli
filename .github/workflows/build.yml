@@ -18,10 +18,8 @@ on:
         type: string
 
 jobs:
-  build:
+  build-binaries:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -32,29 +30,74 @@ jobs:
           go-version: '1.23'
           check-latest: true
 
-      - name: Run Build Script
+      - name: Build All Binaries
         env:
           TS_VERSION: ${{ inputs.ts_version || github.event.inputs.ts_version || github.ref_name }}
         run: |
           chmod +x ./build.sh
           ./build.sh all
 
-      - name: Build Deb Packages
+      - name: Upload Binary Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: assets-binaries
+          path: |
+            bin/tailscale-*
+            bin/tailscaled-*
+
+  build-debs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          check-latest: true
+
+      - name: Build All Deb Packages
         env:
           TS_VERSION: ${{ inputs.ts_version || github.event.inputs.ts_version || github.ref_name }}
         run: |
-          chmod +x ./build_deb.sh
+          chmod +x ./build_deb.sh ./build.sh
           ./build_deb.sh all
+
+      - name: Upload Deb Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: assets-debs
+          path: dist/*.deb
+
+  release:
+    needs: [build-binaries, build-debs]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare Release Assets
+        run: |
+          mkdir -p release_assets
+          # Find all binaries and deb files recursively and copy them to release_assets
+          find artifacts/ -type f \( -name "tailscale-*" -o -name "tailscaled-*" -o -name "*.deb" \) -exec cp {} release_assets/ \;
+          echo "Release assets prepared:"
+          ls -l release_assets/
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.ts_version || github.event.inputs.ts_version || github.ref_name }}
-          files: |
-            bin/tailscaled-*
-            bin/tailscale-*
-            dist/*.deb
+          files: release_assets/*
           body: |
             Patched Tailscale binaries and .deb packages for Termux (Android 11+).
             Based on Tailscale ${{ inputs.ts_version || github.event.inputs.ts_version || github.ref_name }}.
@@ -62,11 +105,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Artifacts
+      - name: Upload Combined Artifacts
         if: ${{ ! (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch') }}
         uses: actions/upload-artifact@v4
         with:
           name: tailscale-termux-cli-binaries
-          path: |
-            bin/**
-            dist/*.deb
+          path: release_assets/*

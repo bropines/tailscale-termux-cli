@@ -156,8 +156,9 @@ build_for_arch() {
 
 if [ "$TARGET_ARCH" = "all" ]; then
     for arch in aarch64 arm i686 x86_64; do
-        build_for_arch "$arch"
+        build_for_arch "$arch" &
     done
+    wait
 else
     build_for_arch "$TARGET_ARCH"
 fi
