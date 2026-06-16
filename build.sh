@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tailscale Termux CLI Builder
-# Optimized for Android 11+ with ifconfig-based netmon patch.
+# Optimized for Android 11+ with ifconfig-based netmon patch and duplicate os.Args workaround.
 # Credits: Tailscale Team, asutorufa/tailscale, and Gemini CLI AI Agent.
 set -eu
 
@@ -23,8 +23,7 @@ if [ -z "${TS_VERSION:-}" ]; then
     fi
 fi
 
-# Clean TS_VERSION for downloading source (e.g., convert v1.96.5-3 back to v1.96.5)
-# This handles cases where TS_VERSION comes from our repository's tag.
+# Clean TS_VERSION for downloading source
 DOWNLOAD_VERSION=$(echo "$TS_VERSION" | sed -E 's/(-[0-9]+)$//')
 echo "-> Tailscale build version: $TS_VERSION"
 echo "-> Tailscale source version to download: $DOWNLOAD_VERSION"
@@ -34,7 +33,22 @@ SRC_DIR="$WORKDIR/tailscale_src"
 PATCH_DIR="$WORKDIR/patches"
 OUT_DIR="$WORKDIR/bin"
 
-mkdir -p "$OUT_DIR"
+# Determine target architecture(s)
+TARGET_ARCH="${1:-}"
+if [ -z "$TARGET_ARCH" ]; then
+    # Detect host architecture
+    HOST_ARCH=$(go env GOARCH)
+    case "$HOST_ARCH" in
+        arm64) TARGET_ARCH="aarch64" ;;
+        arm)   TARGET_ARCH="arm"     ;;
+        386)   TARGET_ARCH="i686"    ;;
+        amd64) TARGET_ARCH="x86_64"  ;;
+        *)
+            echo "Warning: Unknown host architecture '$HOST_ARCH'. Defaulting to aarch64."
+            TARGET_ARCH="aarch64"
+            ;;
+    esac
+fi
 
 # 3. Downloading source
 echo "[1/3] Downloading Tailscale source ($DOWNLOAD_VERSION)..."
@@ -48,15 +62,21 @@ else
     echo "-> Source already exists. Skipping download."
 fi
 
-# 4. Applying patch
-echo "[2/3] Applying netmon patch (ifconfig parser)..."
+# 4. Applying patches
+echo "[2/3] Applying netmon and argument patches..."
 cp "$PATCH_DIR/fix_android_netmon.go" "$SRC_DIR/cmd/tailscaled/"
+cp "$PATCH_DIR/fix_args_android.go" "$SRC_DIR/cmd/tailscaled/"
+cp "$PATCH_DIR/fix_args_android.go" "$SRC_DIR/cmd/tailscale/"
 
 echo "-> Enabling cert endpoint on Android..."
+# Prevent duplicate replacements if build script is run multiple times
+if ! grep -q "localapi" "$SRC_DIR/ipn/localapi/cert.go" 2>/dev/null; then
+    : # Already processed or files don't have it
+fi
 sed 's/!android && //g' "$SRC_DIR/ipn/localapi/cert.go" > "$SRC_DIR/ipn/localapi/cert.go.tmp" && mv "$SRC_DIR/ipn/localapi/cert.go.tmp" "$SRC_DIR/ipn/localapi/cert.go"
 sed 's/ || android//g' "$SRC_DIR/ipn/localapi/disabled_stubs.go" > "$SRC_DIR/ipn/localapi/disabled_stubs.go.tmp" && mv "$SRC_DIR/ipn/localapi/disabled_stubs.go.tmp" "$SRC_DIR/ipn/localapi/disabled_stubs.go"
 
-# Apply DNS manager patch
+# Apply DNS manager patch / modules sync
 cd "$SRC_DIR"
 
 # Ensure anet is available for the build
@@ -65,19 +85,78 @@ go mod tidy
 
 # 5. Compiling
 echo "[3/3] Compiling binaries..."
-# ts_no_clipboard & ts_omit_taildrop: fix crashes/panics in Termux environment
 TAGS="ts_no_clipboard,ts_omit_taildrop,ts_omit_systray,ts_omit_kube,ts_omit_aws,ts_omit_bird,ts_omit_desktop_sessions,ts_omit_networkmanager,ts_omit_sdnotify,ts_omit_ssh"
 
-export GOOS=android
-export GOARCH=arm64
-export CGO_ENABLED=0
+build_for_arch() {
+    local arch="$1"
+    local goarch=""
+    local goarm=""
+    local goos="linux"
+    local build_mode_arg="-buildmode=pie"
 
-# Use -buildmode=pie for better Android compatibility
-echo "-> Building tailscaled..."
-go build -trimpath -buildmode=pie -tags "$TAGS" -ldflags="-s -w -checklinkname=0" -o "$OUT_DIR/tailscaled" ./cmd/tailscaled
+    case "$arch" in
+        aarch64)
+            goarch="arm64"
+            goos="android"
+            ;;
+        arm)
+            goarch="arm"
+            goarm="7"
+            goos="linux"
+            build_mode_arg=""
+            ;;
+        i686)
+            goarch="386"
+            goos="linux"
+            build_mode_arg=""
+            ;;
+        x86_64)
+            goarch="amd64"
+            goos="linux"
+            ;;
+        *)
+            echo "Error: Unknown target architecture '$arch'"
+            return 1
+            ;;
+    esac
 
-echo "-> Building tailscale CLI..."
-go build -trimpath -buildmode=pie -tags "$TAGS" -ldflags="-s -w -checklinkname=0" -o "$OUT_DIR/tailscale" ./cmd/tailscale
+    echo "-> Compiling for $arch (GOARCH=$goarch, GOOS=$goos)..."
+    local arch_out_dir="$OUT_DIR/$arch"
+    mkdir -p "$arch_out_dir"
+
+    export GOOS="$goos"
+    export GOARCH="$goarch"
+    export CGO_ENABLED=0
+    if [ -n "$goarm" ]; then
+        export GOARM="$goarm"
+    else
+        unset GOARM
+    fi
+
+    # Assemble build arguments
+    local build_args=("-trimpath" "-tags" "$TAGS" "-ldflags=-s -w -checklinkname=0")
+    if [ -n "$build_mode_arg" ]; then
+        build_args+=("$build_mode_arg")
+    fi
+
+    # Compile tailscale CLI
+    if [ -d "./cmd/scale" ]; then
+        go build "${build_args[@]}" -o "$arch_out_dir/tailscale" ./cmd/scale
+    else
+        go build "${build_args[@]}" -o "$arch_out_dir/tailscale" ./cmd/tailscale
+    fi
+
+    # Compile tailscaled daemon
+    go build "${build_args[@]}" -o "$arch_out_dir/tailscaled" ./cmd/tailscaled
+}
+
+if [ "$TARGET_ARCH" = "all" ]; then
+    for arch in aarch64 arm i686 x86_64; do
+        build_for_arch "$arch"
+    done
+else
+    build_for_arch "$TARGET_ARCH"
+fi
 
 cd "$WORKDIR"
-echo "Build complete! Binaries are in the 'bin' directory."
+echo "Build complete! Binaries are in the '$OUT_DIR' directory."

@@ -27,12 +27,13 @@ jobs:
           echo "tag=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
           echo "Found upstream tag: $UPSTREAM_TAG"
 
-      - name: Get latest local tag
+      - name: Get latest local release
         id: local
         run: |
-          LOCAL_TAG=$(git tag --sort="v:refname" | tail -n1 || echo "none")
-          echo "tag=$LOCAL_TAG" >> $GITHUB_OUTPUT
-          echo "Found local tag: $LOCAL_TAG"
+          LOCAL_RELEASE=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/latest" | grep -Po '"tag_name": "\K.*?(?=")' || echo "none")
+          if [ -z "$LOCAL_RELEASE" ]; then LOCAL_RELEASE="none"; fi
+          echo "tag=$LOCAL_RELEASE" >> $GITHUB_OUTPUT
+          echo "Found local release: $LOCAL_RELEASE"
 
       - name: Compare tags
         id: compare
@@ -42,15 +43,6 @@ jobs:
           else
             echo "new_version=false" >> $GITHUB_OUTPUT
           fi
-
-      - name: Sync and Release
-        if: steps.compare.outputs.new_version == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          echo "New version detected: ${{ steps.upstream.outputs.tag }}. Creating tag..."
-          git tag ${{ steps.upstream.outputs.tag }}
-          git push origin ${{ steps.upstream.outputs.tag }}
 
   build:
     needs: check-updates

@@ -36,9 +36,15 @@ jobs:
         env:
           TS_VERSION: ${{ inputs.ts_version || github.event.inputs.ts_version || github.ref_name }}
         run: |
-          # If triggered by a tag like v1.96.5, use it. If by dispatch/call, use input.
           chmod +x ./build.sh
-          ./build.sh
+          ./build.sh all
+
+      - name: Build Deb Packages
+        env:
+          TS_VERSION: ${{ inputs.ts_version || github.event.inputs.ts_version || github.ref_name }}
+        run: |
+          chmod +x ./build_deb.sh
+          ./build_deb.sh all
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch'
@@ -46,12 +52,19 @@ jobs:
         with:
           tag_name: ${{ inputs.ts_version || github.event.inputs.ts_version || github.ref_name }}
           files: |
-            bin/tailscaled
-            bin/tailscale
+            bin/aarch64/tailscaled
+            bin/aarch64/tailscale
+            bin/arm/tailscaled
+            bin/arm/tailscale
+            bin/i686/tailscaled
+            bin/i686/tailscale
+            bin/x86_64/tailscaled
+            bin/x86_64/tailscale
+            dist/*.deb
           body: |
-            Patched Tailscale binaries for Termux (Android 11+).
+            Patched Tailscale binaries and .deb packages for Termux (Android 11+).
             Based on Tailscale ${{ inputs.ts_version || github.event.inputs.ts_version || github.ref_name }}.
-            Featuring the Netmon Patch (ifconfig parser).
+            Featuring the Netmon Patch (ifconfig parser) and the duplicate os.Args workaround.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -60,4 +73,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tailscale-termux-cli-binaries
-          path: bin/*
+          path: |
+            bin/**
+            dist/*.deb
