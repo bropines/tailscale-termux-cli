@@ -18,8 +18,13 @@ on:
         type: string
 
 jobs:
-  build-binaries:
+  build:
+    name: Build (${{ matrix.arch }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [aarch64, arm, i686, x86_64]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -30,48 +35,36 @@ jobs:
           go-version: '1.23'
           check-latest: true
 
-      - name: Build All Binaries
-        env:
-          TS_VERSION: ${{ inputs.ts_version || github.event.inputs.ts_version || github.ref_name }}
-        run: |
-          chmod +x ./build.sh
-          ./build.sh all
-
-      - name: Upload Binary Artifacts
-        uses: actions/upload-artifact@v4
+      - name: Cache Go build & module caches
+        uses: actions/cache@v4
         with:
-          name: assets-binaries
           path: |
-            bin/tailscale-*
-            bin/tailscaled-*
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ matrix.arch }}-${{ hashFiles('**/go.sum', 'build.sh', 'patches/*') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ matrix.arch }}-
+            ${{ runner.os }}-go-
 
-  build-debs:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-          check-latest: true
-
-      - name: Build All Deb Packages
+      - name: Build Binaries and Deb Package
         env:
           TS_VERSION: ${{ inputs.ts_version || github.event.inputs.ts_version || github.ref_name }}
         run: |
           chmod +x ./build_deb.sh ./build.sh
-          ./build_deb.sh all
+          ./build_deb.sh ${{ matrix.arch }}
 
-      - name: Upload Deb Artifacts
+      - name: Upload Artifacts for ${{ matrix.arch }}
         uses: actions/upload-artifact@v4
         with:
-          name: assets-debs
-          path: dist/*.deb
+          name: assets-${{ matrix.arch }}
+          path: |
+            bin/tailscale-*
+            bin/tailscaled-*
+            dist/*.deb
 
   release:
-    needs: [build-binaries, build-debs]
+    name: Create Release
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -79,7 +72,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download all artifacts
+      - name: Download all matrix artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -87,10 +80,9 @@ jobs:
       - name: Prepare Release Assets
         run: |
           mkdir -p release_assets
-          # Find all binaries and deb files recursively and copy them to release_assets
           find artifacts/ -type f \( -name "tailscale-*" -o -name "tailscaled-*" -o -name "*.deb" \) -exec cp {} release_assets/ \;
           echo "Release assets prepared:"
-          ls -l release_assets/
+          ls -la release_assets/
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch'
@@ -101,7 +93,7 @@ jobs:
           body: |
             Patched Tailscale binaries and .deb packages for Termux (Android 11+).
             Based on Tailscale ${{ inputs.ts_version || github.event.inputs.ts_version || github.ref_name }}.
-            Featuring the Netmon Patch (ifconfig parser) and the duplicate os.Args workaround.
+            Featuring Netmon Patch (ifconfig parser), auto-socket resolution, and daemon auto-start helper.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -111,3 +103,4 @@ jobs:
         with:
           name: tailscale-termux-cli-binaries
           path: release_assets/*
+
