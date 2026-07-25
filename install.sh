@@ -55,6 +55,10 @@ if command -v apt >/dev/null 2>&1; then
 fi
 
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+if [ -f "$HOME/bin/tailscale" ] || [ -f "$HOME/bin/tailscaled" ]; then
+    echo "-> Removing stale binaries from $HOME/bin to avoid PATH conflict..."
+    rm -f "$HOME/bin/tailscale" "$HOME/bin/tailscaled" "$HOME/bin/tailscaled-start" 2>/dev/null || true
+fi
 if command -v termux-fix-shebang >/dev/null 2>&1; then
     echo "-> Fixing script shebangs for Termux..."
     termux-fix-shebang "$PREFIX/bin/tailscaled-start" \
