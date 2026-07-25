@@ -125,7 +125,7 @@ EOF
 
     # Helper: tailscaled-start
     cat << 'EOF' > "$helper_start"
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/env bash
 # Helper script to start tailscaled in Termux
 set -eu
 
@@ -260,7 +260,7 @@ EOF
 
     # Helper: tailscaled-stop
     cat << 'EOF' > "$helper_stop"
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/env bash
 # Helper script to stop tailscaled in Termux
 set -eu
 
@@ -274,7 +274,7 @@ EOF
 
     # Helper: tailscaled-log
     cat << 'EOF' > "$helper_log"
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/env bash
 # Helper script to view tailscaled logs in Termux
 set -eu
 
@@ -287,7 +287,7 @@ EOF
 
     # Helper: tailscale-cli
     cat << 'EOF' > "$helper_cli"
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/env bash
 # Helper script to run tailscale CLI with correct socket
 set -eu
 
@@ -295,13 +295,30 @@ STATE_DIR="$HOME/.tailscale"
 SOCKET="$STATE_DIR/tailscaled.sock"
 BIN_DIR="${PREFIX:-/data/data/com.termux/files/usr}/bin"
 
+# Auto-start daemon if socket is missing or process is not running
+if [ ! -S "$SOCKET" ] || ! pgrep -f "tailscaled" > /dev/null 2>&1; then
+    echo "Notice: tailscaled is not running. Auto-starting daemon..."
+    if command -v sv >/dev/null 2>&1 && [ -d "${PREFIX:-/data/data/com.termux/files/usr}/var/service/tailscaled" ]; then
+        sv up tailscaled 2>/dev/null || true
+    fi
+    if ! pgrep -f "tailscaled" > /dev/null 2>&1; then
+        if [ -x "$BIN_DIR/tailscaled-start" ]; then
+            "$BIN_DIR/tailscaled-start" >/dev/null 2>&1 &
+        fi
+    fi
+    for i in {1..10}; do
+        if [ -S "$SOCKET" ]; then break; fi
+        sleep 0.5
+    done
+fi
+
 exec "$BIN_DIR/tailscale" --socket="$SOCKET" "$@"
 EOF
     chmod +x "$helper_cli"
 
     # Helper: tailscale-test
     cat << 'EOF' > "$helper_test"
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/env bash
 # Helper script to test tailscaled status and connectivity in Termux
 set -eu
 
@@ -344,7 +361,7 @@ EOF
 
     # Helper: tailscale-update (checks dpkg version and runs remote-install.sh if out of date)
     cat << 'EOF' > "$helper_update"
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/env bash
 set -eu
 
 echo "Checking for updates..."
@@ -388,6 +405,37 @@ Priority: optional
 Homepage: https://github.com/bropines/tailscale-termux-cli
 Description: Patched version of Tailscale CLI for Termux on Android 11+
 EOF
+
+    # 4.5 Generate Debian Postinst Script
+    cat << 'EOF' > "$pkg_dir/DEBIAN/postinst"
+#!/data/data/com.termux/files/usr/bin/sh
+set -e
+
+PREFIX="/data/data/com.termux/files/usr"
+if command -v termux-fix-shebang >/dev/null 2>&1; then
+    termux-fix-shebang "$PREFIX/bin/tailscaled-start" \
+                       "$PREFIX/bin/tailscaled-stop" \
+                       "$PREFIX/bin/tailscaled-log" \
+                       "$PREFIX/bin/tailscale-cli" \
+                       "$PREFIX/bin/tailscale-test" \
+                       "$PREFIX/bin/tailscale-update" \
+                       "$PREFIX/var/service/tailscaled/run" 2>/dev/null || true
+fi
+
+if command -v sv-enable >/dev/null 2>&1; then
+    sv-enable tailscaled 2>/dev/null || true
+    sv up tailscaled 2>/dev/null || true
+fi
+
+exit 0
+EOF
+    chmod 755 "$pkg_dir/DEBIAN/postinst"
+
+    # 4.6 Fix shebangs for Termux environment
+    if command -v termux-fix-shebang >/dev/null 2>&1; then
+        echo "-> Fixing script shebangs for Termux..."
+        termux-fix-shebang "$usr_bin_dir"/* 2>/dev/null || true
+    fi
 
     # 5. Build .deb package
     echo "-> Compressing package with dpkg-deb..."

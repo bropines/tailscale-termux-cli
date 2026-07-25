@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/env bash
 # Tailscale Termux Local Builder & Installer
 # Detects host architecture, compiles binaries, generates completions/services, packages them as a .deb, and installs it.
 set -eu
@@ -54,8 +54,26 @@ if command -v apt >/dev/null 2>&1; then
     apt install -f -y
 fi
 
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+if command -v termux-fix-shebang >/dev/null 2>&1; then
+    echo "-> Fixing script shebangs for Termux..."
+    termux-fix-shebang "$PREFIX/bin/tailscaled-start" \
+                       "$PREFIX/bin/tailscaled-stop" \
+                       "$PREFIX/bin/tailscaled-log" \
+                       "$PREFIX/bin/tailscale-cli" \
+                       "$PREFIX/bin/tailscale-test" \
+                       "$PREFIX/bin/tailscale-update" \
+                       "$PREFIX/var/service/tailscaled/run" 2>/dev/null || true
+fi
+
+if command -v sv-enable >/dev/null 2>&1; then
+    echo "-> Enabling and starting tailscaled service via termux-services..."
+    sv-enable tailscaled 2>/dev/null || true
+    sv up tailscaled 2>/dev/null || true
+fi
+
 echo "========================================="
 echo "Local Installation Complete!"
-echo "To start the daemon, run: tailscaled-start"
-echo "To authenticate, run: tailscale-cli up"
+echo "Daemon is starting/running. To authenticate, run:"
+echo "  tailscale-cli up"
 echo "========================================="
