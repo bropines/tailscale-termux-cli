@@ -18,4 +18,27 @@ func init() {
 			os.Args = append(os.Args[:1], os.Args[2:]...)
 		}
 	}
+
+	// For tailscale CLI on Android: default --socket to ~/.tailscale/tailscaled.sock if not specified
+	prog := filepath.Base(os.Args[0])
+	if prog == "tailscale" || prog == "tailscale-cli" {
+		hasSocket := false
+		for _, arg := range os.Args[1:] {
+			if strings.HasPrefix(arg, "--socket=") || arg == "--socket" {
+				hasSocket = true
+				break
+			}
+		}
+		if !hasSocket {
+			home := os.Getenv("HOME")
+			if home != "" {
+				defaultSock := filepath.Join(home, ".tailscale", "tailscaled.sock")
+				newArgs := make([]string, 0, len(os.Args)+1)
+				newArgs = append(newArgs, os.Args[0], "--socket="+defaultSock)
+				newArgs = append(newArgs, os.Args[1:]...)
+				os.Args = newArgs
+			}
+		}
+	}
 }
+

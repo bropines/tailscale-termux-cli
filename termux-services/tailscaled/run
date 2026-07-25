@@ -7,5 +7,6 @@ mkdir -p "$TAILSCALE_HOME"
 # Start tailscaled in userspace mode for Android 11+
 exec tailscaled \
     --statedir="$TAILSCALE_HOME" \
+    --socket="$TAILSCALE_HOME/tailscaled.sock" \
     --tun=userspace-networking \
     --socks5-server=localhost:1055
