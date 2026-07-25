@@ -41,7 +41,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ matrix.arch }}-${{ hashFiles('**/go.sum', 'build.sh', 'patches/*') }}
+          key: ${{ runner.os }}-go-${{ matrix.arch }}-${{ hashFiles('build.sh', 'build_deb.sh', 'patches/*') }}
           restore-keys: |
             ${{ runner.os }}-go-${{ matrix.arch }}-
             ${{ runner.os }}-go-
