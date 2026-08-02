@@ -139,8 +139,9 @@ Autocompletions for **Bash**, **Zsh**, and **Fish** are installed automatically.
 
 ---
 
-## Credits & Attribution
+## Credits & Contributors
 - **Core Logic:** [Tailscale Team](https://github.com/tailscale/tailscale).
+- **IPv6 UDP Probing & Netmon Enhancements:** [@sailshen](https://github.com/sailshen) (PR #8).
 - **Patch Inspiration:** [asutorufa/tailscale](https://github.com/Asutorufa/tailscale).
 
 *Note: This project is not affiliated with Tailscale Inc.*
