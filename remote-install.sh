@@ -12,6 +12,7 @@ REQUIREMENTS=(
     "wget:wget"
     "grep:grep"
     "dpkg:dpkg"
+    "zstd:zstd"
 )
 
 MISSING_PKGS=""

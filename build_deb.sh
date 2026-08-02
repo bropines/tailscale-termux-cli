@@ -397,7 +397,7 @@ Package: tailscale-termux
 Version: $DEB_VERSION
 Architecture: $deb_arch
 Maintainer: bropines <https://github.com/bropines/tailscale-termux-cli>
-Depends: termux-services, curl, wget, procps, coreutils
+Depends: termux-services, curl, wget, procps, coreutils, zstd
 Conflicts: tailscale
 Replaces: tailscale
 Section: net
@@ -438,8 +438,8 @@ EOF
     fi
 
     # 5. Build .deb package
-    echo "-> Compressing package with dpkg-deb..."
-    dpkg-deb --build "$pkg_dir"
+    echo "-> Compressing package with dpkg-deb (xz)..."
+    dpkg-deb -Zxz --build "$pkg_dir"
     echo "-> Package created successfully: ${pkg_dir}.deb"
 }
 
