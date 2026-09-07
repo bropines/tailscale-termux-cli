@@ -1,12 +1,9 @@
 #!/data/data/com.termux/files/usr/bin/sh
 exec 2>&1
 
-TAILSCALE_HOME="$HOME/.tailscale"
-mkdir -p "$TAILSCALE_HOME"
-
-# Start tailscaled in userspace mode for Android 11+
-exec tailscaled \
-    --statedir="$TAILSCALE_HOME" \
-    --socket="$TAILSCALE_HOME/tailscaled.sock" \
-    --tun=userspace-networking \
-    --socks5-server=localhost:1055
+# Delegate to tailscaled-start rather than repeating the flag list here.
+#
+# When this script had its own hardcoded flags, ~/.tailscale/.env applied only
+# to the manual start path -- so the documented configuration silently did
+# nothing for anyone using the service, which is the default after install.
+exec tailscaled-start --foreground
