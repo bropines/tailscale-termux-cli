@@ -277,11 +277,6 @@ SOCKS_ADDR_FILE="$STATE_DIR/socks_addr"
 BIN_DIR="${PREFIX:-/data/data/com.termux/files/usr}/bin"
 SVLOG_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/log/tailscaled"
 
-# PIDs of tailscaled daemons using our state directory.
-#
-# Matching on the process name rather than `pgrep -f tailscaled` matters twice
-# over: the old pattern matched this helper's own cmdline (so "already running"
-# fired when nothing was), and it matched runsv/svlogd/tail as well.
 # Candidate tailscaled PIDs, before scoping to our state directory.
 #
 # Deliberately not a single mechanism. pgrep is not guaranteed to be present,
@@ -315,28 +310,26 @@ list_tailscaled_pids() {
 
 # PIDs of tailscaled daemons using our state directory.
 daemon_pids() {
-    local pid found="" cmdline exe
+    local pid found="" cmdline comm
     for pid in $(list_tailscaled_pids); do
-        cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
-        if [ -z "$cmdline" ]; then
-            # Unreadable cmdline: cannot scope it, so do not drop it either.
-            found="$found $pid"
-            continue
-        fi
-        # argv[0] decides what a process *is*. Matching "tailscaled" anywhere
-        # in the cmdline is how the original pattern also caught this very
-        # helper, `runsv tailscaled` and `tail -f ...tailscaled.log`.
-        exe=${cmdline%% *}
-        case "${exe##*/}" in
-            tailscaled) ;;
-            *) continue ;;
-        esac
+        # /proc/<pid>/comm is the authority on what a process is, and reading
+        # it also proves the process still exists: `pgrep -f` matches
+        # transients (including the command line that invoked us) and a /proc
+        # walk races with exits. Braces around the redirect because a missing
+        # file is reported by the shell, not by the command -- `tr 2>/dev/null`
+        # does not silence it.
+        comm=""
+        { read -r comm < "/proc/$pid/comm"; } 2>/dev/null || continue
+        [ "$comm" = tailscaled ] || continue
+
+        cmdline=""
+        { cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline"); } 2>/dev/null || true
         # A `case` glob, not `... | grep -q`: under `set -o pipefail` such a
-        # pipeline can report failure on a *successful* match, because the
-        # producer takes SIGPIPE when grep -q exits early. That silently
-        # drops a live daemon.
+        # pipeline reports failure on a *successful* match once the producer
+        # takes SIGPIPE, which would silently drop a live daemon.
         case "$cmdline" in
             *"--statedir=$STATE_DIR"*) found="$found $pid" ;;
+            "") found="$found $pid" ;;
         esac
     done
     printf '%s' "${found# }"
@@ -359,7 +352,7 @@ live_socks_addr() {
     local pid arg
     for pid in $(daemon_pids); do
         # Same reason as above: no pipeline, so pipefail cannot swallow a hit.
-        for arg in $(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true); do
+        for arg in $( { tr '\0' '\n' < "/proc/$pid/cmdline"; } 2>/dev/null || true ); do
             case "$arg" in
                 --socks5-server=*)
                     printf '%s' "${arg#--socks5-server=}"

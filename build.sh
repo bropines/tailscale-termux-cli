@@ -156,6 +156,29 @@ else
     exit 1
 fi
 
+# Make outbound name resolution honour the resolver the netmon patch installs.
+#
+# net/tsdial resolves names for SOCKS5 and the HTTP proxy through a zero-value
+# net.Resolver, not net.DefaultResolver -- so it reads /etc/resolv.conf, which
+# Termux does not have, and every hostname lookup through the proxy fails
+# while a connection to a literal IP works. Copy the two fields that matter
+# rather than the struct: net.Resolver embeds a mutex.
+echo "-> Pointing net/tsdial at the configured resolver..."
+TSDIAL_GO="$SRC_DIR/net/tsdial/tsdial.go"
+if grep -q "termux: use the configured resolver" "$TSDIAL_GO"; then
+    echo "   already wired, skipping."
+elif grep -q '^	var r net.Resolver$' "$TSDIAL_GO"; then
+    sed 's|^\tvar r net.Resolver$|\tvar r net.Resolver\n\t// termux: use the configured resolver; a zero net.Resolver reads\n\t// /etc/resolv.conf, which does not exist here.\n\tif dr := net.DefaultResolver; dr != nil {\n\t\tr.PreferGo = dr.PreferGo\n\t\tr.Dial = dr.Dial\n\t}|' \
+        "$TSDIAL_GO" > "$TSDIAL_GO.tmp" && mv "$TSDIAL_GO.tmp" "$TSDIAL_GO"
+    grep -q "termux: use the configured resolver" "$TSDIAL_GO" || { echo "Error: tsdial resolver injection did not take effect."; exit 1; }
+    echo "   done."
+else
+    echo "Error: could not find 'var r net.Resolver' in $TSDIAL_GO."
+    echo "       Upstream changed net/tsdial; update this patch step, or"
+    echo "       hostname resolution through the SOCKS5 proxy will fail."
+    exit 1
+fi
+
 # Apply DNS manager patch / modules sync
 cd "$SRC_DIR"
 
