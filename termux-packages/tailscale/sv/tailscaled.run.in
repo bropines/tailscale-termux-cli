@@ -1,0 +1,20 @@
+#!@TERMUX_PREFIX@/bin/sh
+exec 2>&1
+
+TAILSCALE_STATE_DIR="$HOME/.tailscale"
+mkdir -p "$TAILSCALE_STATE_DIR"
+
+# Optional overrides, chiefly TAILSCALED_ARGS. See the file's own comments.
+if [ -r "@TERMUX_PREFIX@/etc/tailscale/tailscaled.conf" ]; then
+	. "@TERMUX_PREFIX@/etc/tailscale/tailscaled.conf"
+fi
+
+# --tun=userspace-networking: Android grants no /dev/net/tun without root.
+# The socket lives under $HOME because the upstream default,
+# /var/run/tailscale/tailscaled.sock, is not writable on Android; the
+# `tailscale` CLI is patched to look in the same place.
+exec tailscaled \
+	--statedir="$TAILSCALE_STATE_DIR" \
+	--socket="$TAILSCALE_STATE_DIR/tailscaled.sock" \
+	--tun=userspace-networking \
+	${TAILSCALED_ARGS:-}

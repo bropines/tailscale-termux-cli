@@ -83,10 +83,10 @@ func parseProcNetIfInet6() (map[string][]*net.IPNet, error) {
 func detectIPv6Addr() net.IP {
 	// Try multiple well-known IPv6 addresses in case one is unreachable
 	targets := []string{
-		"[2001:4860:4860::8888]:53",   // Google DNS
-		"[2001:4860:4860::8844]:53",   // Google DNS secondary
-		"[2606:4700:4700::1111]:53",   // Cloudflare DNS
-		"[2620:fe::fe]:53",            // Quad9 DNS
+		"[2001:4860:4860::8888]:53", // Google DNS
+		"[2001:4860:4860::8844]:53", // Google DNS secondary
+		"[2606:4700:4700::1111]:53", // Cloudflare DNS
+		"[2620:fe::fe]:53",          // Quad9 DNS
 	}
 	for _, target := range targets {
 		conn, err := net.DialTimeout("udp6", target, 3*time.Second)
