@@ -33,6 +33,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # Without tags `git describe` falls back to a bare commit hash,
+          # which is not a usable package version.
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5

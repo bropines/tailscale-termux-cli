@@ -12,6 +12,16 @@ if [ -z "${TS_VERSION:-}" ]; then
 fi
 # Clean version string for debian (replace starting 'v' if present, replace dashes with tildes)
 DEB_VERSION=$(echo "$TS_VERSION" | sed 's/^v//' | tr '-' '.')
+# Both dpkg and pacman require a version starting with a digit. `git describe
+# --tags --always` returns a bare commit hash when the clone has no tags, as a
+# shallow CI checkout does, and dpkg-deb rejects that outright.
+case "$DEB_VERSION" in
+    [0-9]*) ;;
+    *)
+        DEB_VERSION="0.0.0.g$DEB_VERSION"
+        echo "-> Version '$TS_VERSION' is not usable as a package version; using $DEB_VERSION"
+        ;;
+esac
 
 # The upstream source version these binaries must be built from.
 #
