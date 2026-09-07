@@ -10,17 +10,30 @@ if [ -z "${TS_VERSION:-}" ]; then
     # Try to find from git tag or default
     TS_VERSION=$(git describe --tags --always 2>/dev/null || echo "1.100.0")
 fi
-# Hand the same version down to build.sh, so the source it downloads and the
-# version stamped on the package cannot disagree.
-export TS_VERSION
 # Clean version string for debian (replace starting 'v' if present, replace dashes with tildes)
 DEB_VERSION=$(echo "$TS_VERSION" | sed 's/^v//' | tr '-' '.')
-# The upstream source version these binaries must have been built from.
-SRC_VERSION=$(echo "$TS_VERSION" | sed -E 's/(-[0-9]+)$//')
-case "$SRC_VERSION" in
-    v*) ;;
-    *) SRC_VERSION="v$SRC_VERSION" ;;
-esac
+
+# The upstream source version these binaries must be built from.
+#
+# TS_VERSION doubles as this project's package version, and the two are not
+# always the same thing: `git describe --always` in a shallow CI checkout
+# returns a bare commit hash, which makes a fine package version but is not a
+# tag build.sh can download.
+if printf '%s' "$TS_VERSION" | grep -qE '^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$'; then
+    SRC_VERSION=$(echo "$TS_VERSION" | sed -E 's/(-[0-9]+)$//')
+    case "$SRC_VERSION" in
+        v*) ;;
+        *) SRC_VERSION="v$SRC_VERSION" ;;
+    esac
+    # Hand it down so the source build.sh downloads and the version stamped on
+    # the package cannot disagree.
+    export TS_VERSION
+else
+    echo "-> Package version '$TS_VERSION' is not an upstream release tag;"
+    echo "   build.sh will resolve the latest Tailscale version itself."
+    SRC_VERSION=""
+    unset TS_VERSION
+fi
 
 TARGET_ARCH="${1:-}"
 if [ -z "$TARGET_ARCH" ]; then
@@ -48,6 +61,8 @@ binaries_are_current() {
     local arch="$1"
     [ -f "$BIN_DIR/$arch/tailscale" ] || return 1
     [ -f "$BIN_DIR/$arch/tailscaled" ] || return 1
+    # With no pinned upstream version there is nothing to compare against.
+    [ -n "$SRC_VERSION" ] || return 0
     # Without this check a stale binary gets packaged under a fresh version
     # number, and tailscale-update then cheerfully reports you are up to date.
     [ "$(cat "$BIN_DIR/$arch/.ts_version" 2>/dev/null || echo unknown)" = "$SRC_VERSION" ]
