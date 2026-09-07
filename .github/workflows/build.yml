@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'v*'
+  # Build (but never publish) on PRs. The repository had no PR check at all,
+  # which is how three architectures shipped for months without the netmon
+  # patch: build.sh's verify_patched now fails that build instead.
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       ts_version:
@@ -48,7 +53,7 @@ jobs:
 
       - name: Build Binaries and Deb Package
         env:
-          TS_VERSION: ${{ inputs.ts_version || github.event.inputs.ts_version || github.ref_name }}
+          TS_VERSION: ${{ inputs.ts_version || github.event.inputs.ts_version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
         run: |
           chmod +x ./build_deb.sh ./build.sh
           ./build_deb.sh ${{ matrix.arch }}
@@ -110,11 +115,11 @@ jobs:
         if: steps.gate.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.ts_version || github.event.inputs.ts_version || github.ref_name }}
+          tag_name: ${{ inputs.ts_version || github.event.inputs.ts_version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
           files: release_assets/*
           body: |
             Patched Tailscale binaries and .deb packages for Termux (Android 11+).
-            Based on Tailscale ${{ inputs.ts_version || github.event.inputs.ts_version || github.ref_name }}.
+            Based on Tailscale ${{ inputs.ts_version || github.event.inputs.ts_version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}.
             Featuring Netmon Patch (ifconfig parser), auto-socket resolution, and daemon auto-start helper.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

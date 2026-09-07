@@ -10,6 +10,9 @@ if [ -z "${TS_VERSION:-}" ]; then
     # Try to find from git tag or default
     TS_VERSION=$(git describe --tags --always 2>/dev/null || echo "1.100.0")
 fi
+# Hand the same version down to build.sh, so the source it downloads and the
+# version stamped on the package cannot disagree.
+export TS_VERSION
 # Clean version string for debian (replace starting 'v' if present, replace dashes with tildes)
 DEB_VERSION=$(echo "$TS_VERSION" | sed 's/^v//' | tr '-' '.')
 # The upstream source version these binaries must have been built from.
