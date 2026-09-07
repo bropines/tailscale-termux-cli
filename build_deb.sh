@@ -282,16 +282,62 @@ SVLOG_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/log/tailscaled"
 # Matching on the process name rather than `pgrep -f tailscaled` matters twice
 # over: the old pattern matched this helper's own cmdline (so "already running"
 # fired when nothing was), and it matched runsv/svlogd/tail as well.
-daemon_pids() {
-    local pid found=""
-    for pid in $(pgrep -x tailscaled 2>/dev/null || true); do
-        if [ -r "/proc/$pid/cmdline" ]; then
-            if tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q -- "--statedir=$STATE_DIR"; then
-                found="$found $pid"
-            fi
-        else
-            found="$found $pid"
+# Candidate tailscaled PIDs, before scoping to our state directory.
+#
+# Deliberately not a single mechanism. pgrep is not guaranteed to be present,
+# Termux may provide either procps' or toybox's, and Android restricts parts
+# of /proc -- so a plain /proc walk backs it up. Detection failing silently is
+# worse than it looks: the helpers then report "not running" about a daemon
+# that is, and tailscaled-start launches a second one onto a bound socket.
+list_tailscaled_pids() {
+    local pids="" d
+    if command -v pgrep >/dev/null 2>&1; then
+        pids=$(pgrep -x tailscaled 2>/dev/null || true)
+        if [ -z "$pids" ]; then
+            pids=$(pgrep -f 'tailscaled' 2>/dev/null || true)
         fi
+    fi
+    if [ -z "$pids" ]; then
+        local comm
+        for d in /proc/[0-9]*; do
+            [ -r "$d/comm" ] || continue
+            # `read`, not `cat`: this is the path taken when the environment
+            # is already missing tools, so it must not need one itself.
+            comm=""
+            read -r comm < "$d/comm" 2>/dev/null || true
+            case "$comm" in
+                tailscaled) pids="$pids ${d#/proc/}" ;;
+            esac
+        done
+    fi
+    printf '%s' "$pids"
+}
+
+# PIDs of tailscaled daemons using our state directory.
+daemon_pids() {
+    local pid found="" cmdline exe
+    for pid in $(list_tailscaled_pids); do
+        cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
+        if [ -z "$cmdline" ]; then
+            # Unreadable cmdline: cannot scope it, so do not drop it either.
+            found="$found $pid"
+            continue
+        fi
+        # argv[0] decides what a process *is*. Matching "tailscaled" anywhere
+        # in the cmdline is how the original pattern also caught this very
+        # helper, `runsv tailscaled` and `tail -f ...tailscaled.log`.
+        exe=${cmdline%% *}
+        case "${exe##*/}" in
+            tailscaled) ;;
+            *) continue ;;
+        esac
+        # A `case` glob, not `... | grep -q`: under `set -o pipefail` such a
+        # pipeline can report failure on a *successful* match, because the
+        # producer takes SIGPIPE when grep -q exits early. That silently
+        # drops a live daemon.
+        case "$cmdline" in
+            *"--statedir=$STATE_DIR"*) found="$found $pid" ;;
+        esac
     done
     printf '%s' "${found# }"
 }
@@ -310,11 +356,18 @@ service_present() {
 # cmdline. The socks_addr file is only a fallback: it goes stale whenever the
 # daemon is restarted by another path.
 live_socks_addr() {
-    local pid cmd
+    local pid arg
     for pid in $(daemon_pids); do
-        cmd=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true)
-        printf '%s\n' "$cmd" | sed -n 's/^--socks5-server=//p' | head -n1
-        return 0
+        # Same reason as above: no pipeline, so pipefail cannot swallow a hit.
+        for arg in $(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true); do
+            case "$arg" in
+                --socks5-server=*)
+                    printf '%s' "${arg#--socks5-server=}"
+                    return 0
+                    ;;
+            esac
+        done
+        return 1
     done
     return 1
 }

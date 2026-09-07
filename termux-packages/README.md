@@ -70,9 +70,9 @@ straightforwardly correct build, with real Android binaries throughout.
 Verify they still apply before submitting:
 
 ```bash
-curl -fsSL https://github.com/tailscale/tailscale/archive/refs/tags/v1.100.0.tar.gz | tar -xz
+curl -fsSL https://github.com/tailscale/tailscale/archive/refs/tags/v1.102.3.tar.gz | tar -xz
 for p in termux-packages/tailscale/000*.patch; do
-    patch -p1 --dry-run -d tailscale-1.100.0 < "$p"
+    patch -p1 --dry-run -d tailscale-1.102.3 < "$p"
 done
 ```
 
