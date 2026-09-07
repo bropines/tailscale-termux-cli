@@ -1,19 +1,36 @@
 #!/data/data/com.termux/files/usr/bin/env bash
 # Tailscale Termux Remote Installer
 # Automates downloading and installing the architecture-specific deb package.
-set -eu
+set -euo pipefail
 
 echo "Tailscale Termux Remote Installer"
 echo "=============================="
+
+# Termux ships both a dpkg-based and a pacman-based variant (issue #9).
+if command -v dpkg >/dev/null 2>&1; then
+    PKG_FORMAT="deb"
+elif command -v pacman >/dev/null 2>&1; then
+    PKG_FORMAT="pacman"
+else
+    echo "Error: neither dpkg nor pacman was found."
+    echo "       This does not look like a Termux environment."
+    exit 1
+fi
+echo "[*] Package manager: $PKG_FORMAT"
 
 echo "[*] Checking requirements..."
 REQUIREMENTS=(
     "curl:curl"
     "wget:wget"
     "grep:grep"
-    "dpkg:dpkg"
-    "zstd:zstd"
+    # The package depends on termux-services. Without it here, the install
+    # leaves an unconfigured package behind.
+    "sv:termux-services"
+    "sha256sum:coreutils"
 )
+if [ "$PKG_FORMAT" = "deb" ]; then
+    REQUIREMENTS+=("zstd:zstd")
+fi
 
 MISSING_PKGS=""
 for req in "${REQUIREMENTS[@]}"; do
@@ -26,18 +43,26 @@ done
 
 if [ -n "$MISSING_PKGS" ]; then
     echo " -> Installing missing dependencies:$MISSING_PKGS"
+    # shellcheck disable=SC2086
     pkg install -y $MISSING_PKGS
 else
     echo " -> All installer dependencies are present."
 fi
 
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 REPO="bropines/tailscale-termux-cli"
 
 echo "[1/3] Fetching latest release info..."
-LATEST_TAG=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep -Po '"tag_name": "\K.*?(?=")')
+# `|| true` is load-bearing: under `set -e` a failing grep (GitHub rate-limits
+# unauthenticated API calls to 60/hour per IP, which carrier NAT reaches easily)
+# aborts the script on this assignment, making the check below unreachable.
+LATEST_TAG=$(curl -fsS "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null | grep -Po '"tag_name": "\K.*?(?=")' || true)
 
 if [ -z "$LATEST_TAG" ]; then
-    echo "Error: No releases found."
+    echo "Error: could not fetch the latest release."
+    echo "       GitHub may be rate-limiting this IP, or there is no network."
+    echo "       Try again later, or download the .deb manually from:"
+    echo "       https://github.com/$REPO/releases/latest"
     exit 1
 fi
 echo "-> Latest Release: $LATEST_TAG"
@@ -64,29 +89,83 @@ case "$ARCH" in
 esac
 echo "-> Detected architecture: $ARCH"
 
-# Convert LATEST_TAG for deb version (e.g. v1.100.0 -> 1.100.0)
+# Convert LATEST_TAG to a package version (e.g. v1.100.0-3 -> 1.100.0.3)
 DEB_VERSION=$(echo "$LATEST_TAG" | sed 's/^v//' | tr '-' '.')
-DEB_FILE="tailscale-termux_${DEB_VERSION}_${ARCH}.deb"
+if [ "$PKG_FORMAT" = "deb" ]; then
+    DEB_FILE="tailscale-termux_${DEB_VERSION}_${ARCH}.deb"
+else
+    DEB_FILE="tailscale-termux-${DEB_VERSION}-1-${ARCH}.pkg.tar.xz"
+fi
 DEB_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$DEB_FILE"
 
 echo "[2/3] Downloading package: $DEB_FILE..."
-# Create a temporary directory to download
-TMP_DIR=$(mktemp -d "$HOME/tmp.XXXXXX")
-trap 'rm -rf "$TMP_DIR"' EXIT
+# Keep the download outside the trap's reach so a failed install can be retried
+# by hand instead of leaving a half-configured package and no .deb to fix it with.
+DOWNLOAD_DIR="$HOME/.cache/tailscale-termux"
+mkdir -p "$DOWNLOAD_DIR"
 
-wget -q --show-progress -O "$TMP_DIR/$DEB_FILE" "$DEB_URL"
-
-echo "[3/3] Installing package via dpkg..."
-# Stop existing daemon if running
-pkill -f tailscaled || true
-
-# Use dpkg -i to avoid privilege-dropping metadata read errors in user directories, then fix deps
-dpkg -i "$TMP_DIR/$DEB_FILE"
-if command -v apt >/dev/null 2>&1; then
-    apt install -f -y
+if ! wget -q --show-progress -O "$DOWNLOAD_DIR/$DEB_FILE" "$DEB_URL"; then
+    rm -f "$DOWNLOAD_DIR/$DEB_FILE"
+    echo "Error: failed to download $DEB_URL"
+    exit 1
 fi
 
-PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+# Verify against the checksums published with the release. This is what makes
+# publishing SHA256SUMS worth anything; the download itself is a plain fetch.
+echo " -> Verifying checksum..."
+EXPECTED_SHA=$(curl -fsSL "https://github.com/$REPO/releases/download/$LATEST_TAG/SHA256SUMS" 2>/dev/null \
+    | awk -v f="$DEB_FILE" '{ n = $2; sub(/^\.\//, "", n); if (n == f) print $1 }' | head -n1 || true)
+if [ -n "$EXPECTED_SHA" ]; then
+    ACTUAL_SHA=$(sha256sum "$DOWNLOAD_DIR/$DEB_FILE" | cut -d' ' -f1)
+    if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+        rm -f "$DOWNLOAD_DIR/$DEB_FILE"
+        echo "Error: checksum mismatch for $DEB_FILE."
+        echo "       expected: $EXPECTED_SHA"
+        echo "       actual:   $ACTUAL_SHA"
+        echo "       Refusing to install. Report this if it persists."
+        exit 1
+    fi
+    echo "    OK ($ACTUAL_SHA)"
+else
+    # Releases published before SHA256SUMS existed have nothing to check.
+    echo "    No SHA256SUMS published for $LATEST_TAG; skipping verification."
+fi
+
+echo "[3/3] Installing package..."
+# Stop the service first. A bare `pkill -f tailscaled` matches this project's
+# own `runsv tailscaled`, `svlogd` and `tail -f ...tailscaled.log` processes,
+# and killing runsv just makes runit restart the daemon a second later --
+# in the middle of the install.
+if command -v sv >/dev/null 2>&1 && [ -d "$PREFIX/var/service/tailscaled" ]; then
+    sv down tailscaled 2>/dev/null || true
+fi
+pkill -f -- "--statedir=$HOME/.tailscale" 2>/dev/null || true
+
+if [ "$PKG_FORMAT" = "deb" ]; then
+    # dpkg -i avoids privilege-dropping metadata read errors in user
+    # directories. It exits 1 when a dependency is unmet, having unpacked but
+    # not configured the package -- `|| true` lets `apt install -f` repair it.
+    dpkg -i "$DOWNLOAD_DIR/$DEB_FILE" || true
+    if command -v apt >/dev/null 2>&1; then
+        apt install -f -y
+    fi
+    # Confirm the package really is configured, rather than trusting the banner.
+    if ! dpkg-query -W -f='${Status}' tailscale-termux 2>/dev/null | grep -q "install ok installed"; then
+        echo "Error: the package was unpacked but not configured."
+        echo "       The package is kept at: $DOWNLOAD_DIR/$DEB_FILE"
+        echo "       Try: apt install -f -y && dpkg -i '$DOWNLOAD_DIR/$DEB_FILE'"
+        exit 1
+    fi
+else
+    pacman -U --noconfirm "$DOWNLOAD_DIR/$DEB_FILE" || true
+    if ! pacman -Q tailscale-termux >/dev/null 2>&1; then
+        echo "Error: pacman did not install the package."
+        echo "       The package is kept at: $DOWNLOAD_DIR/$DEB_FILE"
+        echo "       Try: pacman -U '$DOWNLOAD_DIR/$DEB_FILE'"
+        exit 1
+    fi
+fi
+
 if [ -f "$HOME/bin/tailscale" ] || [ -f "$HOME/bin/tailscaled" ]; then
     echo "-> Removing stale binaries from $HOME/bin to avoid PATH conflict..."
     rm -f "$HOME/bin/tailscale" "$HOME/bin/tailscaled" "$HOME/bin/tailscaled-start" 2>/dev/null || true
@@ -99,6 +178,7 @@ if command -v termux-fix-shebang >/dev/null 2>&1; then
                        "$PREFIX/bin/tailscale-cli" \
                        "$PREFIX/bin/tailscale-test" \
                        "$PREFIX/bin/tailscale-update" \
+                       "$PREFIX/bin/tailscale-socks5" \
                        "$PREFIX/var/service/tailscaled/run" 2>/dev/null || true
 fi
 
@@ -112,4 +192,7 @@ echo "============================================="
 echo "Installation Complete!"
 echo "Daemon is starting/running. To authenticate, run:"
 echo "  tailscale-cli up"
+echo ""
+echo "The SOCKS5 proxy requires a password. See it with:"
+echo "  tailscale-socks5"
 echo "============================================="

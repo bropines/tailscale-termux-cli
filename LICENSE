@@ -1,6 +1,16 @@
 Copyright (c) 2026 Tailscale Termux CLI Contributors
 All rights reserved.
 
+This license covers this project's own contributions: the build scripts, the
+packaging, the helper commands, and the patch files under patches/.
+
+The tailscale and tailscaled programs this project builds and distributes are
+Copyright (c) Tailscale Inc. & AUTHORS, licensed under the same BSD 3-Clause
+terms reproduced below. Nothing here claims copyright over that code. Binary
+distributions of this project ship Tailscale's notice alongside this one, at
+$PREFIX/share/doc/tailscale-termux/copyright, as clause 2 requires. Upstream
+source: https://github.com/tailscale/tailscale
+
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
 

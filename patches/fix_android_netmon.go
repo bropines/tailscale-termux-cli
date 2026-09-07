@@ -1,4 +1,8 @@
-//go:build android
+// SPDX-License-Identifier: BSD-3-Clause
+//
+// Termux patch for cmd/tailscaled. See LICENSE at the repository root.
+
+//go:build android || linux
 
 package main
 
@@ -104,6 +108,24 @@ func detectIPv6Addr() net.IP {
 	return nil
 }
 
+// termuxDNSServer returns the resolver address tailscaled should dial, or ""
+// to keep Go's default resolver. Controlled by TS_DNS_SERVER: unset means
+// 8.8.8.8:53, "system"/"default"/"off" means no override, anything else is
+// used verbatim (a bare IP gets :53 appended).
+func termuxDNSServer() string {
+	v := strings.TrimSpace(os.Getenv("TS_DNS_SERVER"))
+	switch strings.ToLower(v) {
+	case "":
+		return "8.8.8.8:53"
+	case "system", "default", "off":
+		return ""
+	}
+	if _, _, err := net.SplitHostPort(v); err != nil {
+		return net.JoinHostPort(v, "53")
+	}
+	return v
+}
+
 func init() {
 	// 1. Mask as CLI to bypass mobile-specific policies
 	hostinfo.RegisterHostinfoNewHook(func(hi *tailcfg.Hostinfo) {
@@ -115,15 +137,32 @@ func init() {
 		fmt.Printf("[Termux] Masking App as: %s, DeviceModel: %s\n", hi.App, hi.DeviceModel)
 	})
 
-	// 2. Redirect DNS to 8.8.8.8 directly (bypass broken netlink on Android)
-	net.DefaultResolver = &net.Resolver{
-		PreferGo: true,
-		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, "udp", "8.8.8.8:53")
-		},
+	// 2. Install a resolver.
+	//
+	// The binaries are built with CGO_ENABLED=0, so Go uses its pure-Go
+	// resolver, which reads /etc/resolv.conf — a file Termux does not have.
+	// Without this the daemon cannot resolve the control plane at all.
+	//
+	// Configurable via TS_DNS_SERVER in ~/.tailscale/.env; "system" keeps
+	// Go's default resolver. See README for the privacy trade-off.
+	if dns := termuxDNSServer(); dns != "" {
+		net.DefaultResolver = &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				var d net.Dialer
+				// Honour the caller's transport: Go retries over TCP when a
+				// UDP answer comes back truncated, and forcing that retry
+				// onto UDP would lose the very answers it exists to fetch.
+				if strings.HasPrefix(network, "tcp") {
+					return d.DialContext(ctx, "tcp", dns)
+				}
+				return d.DialContext(ctx, "udp", dns)
+			},
+		}
+		fmt.Printf("[Termux] DNS resolver pinned to %s\n", dns)
+	} else {
+		fmt.Printf("[Termux] DNS resolver: system default\n")
 	}
-	fmt.Printf("[Termux] Global DNS redirected to 8.8.8.8\n")
 
 	// 3. Register custom interface getter:
 	//    - Interface list: anet.Interfaces() (ioctl-based, works on Android 11+)
