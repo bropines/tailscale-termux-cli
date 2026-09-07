@@ -61,6 +61,7 @@ jobs:
             bin/tailscale-*
             bin/tailscaled-*
             dist/*.deb
+            dist/*.pkg.tar.xz
 
   release:
     name: Create Release
@@ -80,7 +81,7 @@ jobs:
       - name: Prepare Release Assets
         run: |
           mkdir -p release_assets
-          find artifacts/ -type f \( -name "tailscale-*" -o -name "tailscaled-*" -o -name "*.deb" \) -exec cp {} release_assets/ \;
+          find artifacts/ -type f \( -name "tailscale-*" -o -name "tailscaled-*" -o -name "*.deb" -o -name "*.pkg.tar.xz" \) -exec cp {} release_assets/ \;
           # Publish checksums: remote-install.sh and tailscale-update pull these
           # assets over plain HTTPS with nothing to verify them against.
           ( cd release_assets && sha256sum ./* > SHA256SUMS )

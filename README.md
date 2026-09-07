@@ -12,6 +12,8 @@ Run this single command in Termux to download and install the latest package:
 curl -fsSL https://raw.githubusercontent.com/bropines/tailscale-termux-cli/main/remote-install.sh | bash
 ```
 
+The installer detects whether your Termux uses **dpkg** or **pacman** and fetches the matching package (`.deb` or `.pkg.tar.xz`). Releases carry a `SHA256SUMS` file if you want to verify the download by hand.
+
 Once installed, the `tailscaled` background service is enabled and started. You can immediately connect:
 
 ```bash
@@ -174,7 +176,12 @@ If you have Go installed in Termux, you can build from source:
 ./install.sh
 ```
 
-`build.sh` verifies after every compile that the netmon, `anet` and SOCKS5-auth patches actually made it into `tailscaled`, and fails the build if not.
+`install.sh` produces both a `.deb` and a `.pkg.tar.xz` in `dist/`.
+
+Two build-time guards worth knowing about:
+
+* **The upstream tarball is checksummed.** `checksums/<version>.sha256` pins the SHA-256 of Tailscale's source archive, verified before anything is unpacked, compiled or run. A version with no pin yet is recorded and reported so you can commit it; set `TS_REQUIRE_CHECKSUM=1` to make an unpinned version a hard failure instead.
+* **The binary is checked for the patches.** After every compile `build.sh` greps `tailscaled` for the netmon, `anet` and SOCKS5-auth markers and fails if any are missing. A `//go:build` tag that stops matching produces no warning anywhere, which is exactly how three architectures once shipped unpatched.
 
 > [!NOTE]
 > Only `aarch64` is built as `GOOS=android`; Go requires cgo/NDK external linking for every other Android architecture, so `arm`, `i686` and `x86_64` are built as static `GOOS=linux` binaries. The patches are tagged `android || linux` so they are present in all four.

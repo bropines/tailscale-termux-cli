@@ -9,12 +9,12 @@ echo "=============================="
 
 # 1. Check for build tools
 MISSING=""
-for tool in go git wget tar; do
+for tool in go git wget tar sha256sum; do
     command -v "$tool" >/dev/null 2>&1 || MISSING="$MISSING $tool"
 done
 if [ -n "$MISSING" ]; then
     echo "Error: missing required tools:$MISSING"
-    echo "Install them in Termux with 'pkg install golang git wget tar'."
+    echo "Install them in Termux with 'pkg install golang git wget tar coreutils'."
     exit 1
 fi
 
@@ -41,6 +41,7 @@ SRC_DIR="$WORKDIR/tailscale_src"
 PATCH_DIR="$WORKDIR/patches"
 OUT_DIR="$WORKDIR/bin"
 SRC_STAMP="$SRC_DIR/.ts_version"
+CHECKSUM_DIR="$WORKDIR/checksums"
 
 # Determine target architecture(s)
 TARGET_ARCH="${1:-}"
@@ -75,11 +76,48 @@ if [ -d "$SRC_DIR" ]; then
 fi
 
 if [ ! -d "$SRC_DIR" ]; then
-    if ! wget -qO- "https://github.com/tailscale/tailscale/archive/refs/tags/${DOWNLOAD_VERSION}.tar.gz" | tar -xz; then
-        echo "Error: Failed to download or extract Tailscale source for version $DOWNLOAD_VERSION"
+    # Download to a file rather than piping straight into tar, so the archive
+    # can be checksummed before any of its contents are unpacked, compiled and
+    # (for shell completions) executed on this machine.
+    TARBALL="$WORKDIR/.tailscale-${DOWNLOAD_VERSION}.tar.gz"
+    if ! wget -q -O "$TARBALL" "https://github.com/tailscale/tailscale/archive/refs/tags/${DOWNLOAD_VERSION}.tar.gz"; then
+        rm -f "$TARBALL"
+        echo "Error: Failed to download Tailscale source for version $DOWNLOAD_VERSION"
         exit 1
     fi
-    mv "tailscale-${DOWNLOAD_VERSION#v}" "$SRC_DIR"
+
+    ACTUAL_SHA=$(sha256sum "$TARBALL" | cut -d' ' -f1)
+    EXPECTED_FILE="$CHECKSUM_DIR/${DOWNLOAD_VERSION}.sha256"
+    if [ -f "$EXPECTED_FILE" ]; then
+        EXPECTED_SHA=$(cut -d' ' -f1 < "$EXPECTED_FILE")
+        if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            rm -f "$TARBALL"
+            echo "Error: checksum mismatch for Tailscale $DOWNLOAD_VERSION."
+            echo "       expected: $EXPECTED_SHA"
+            echo "       actual:   $ACTUAL_SHA"
+            echo "       Refusing to build. A release tag should never change contents."
+            exit 1
+        fi
+        echo "-> Source checksum verified against $EXPECTED_FILE"
+    elif [ -n "${TS_REQUIRE_CHECKSUM:-}" ]; then
+        rm -f "$TARBALL"
+        echo "Error: no pinned checksum for $DOWNLOAD_VERSION and TS_REQUIRE_CHECKSUM is set."
+        echo "       Record it with: echo '$ACTUAL_SHA  tailscale-$DOWNLOAD_VERSION.tar.gz' > $EXPECTED_FILE"
+        exit 1
+    else
+        mkdir -p "$CHECKSUM_DIR"
+        echo "$ACTUAL_SHA  tailscale-${DOWNLOAD_VERSION}.tar.gz" > "$EXPECTED_FILE"
+        echo "-> No pinned checksum for $DOWNLOAD_VERSION; recorded $ACTUAL_SHA"
+        echo "   Commit $EXPECTED_FILE so later builds verify against it."
+    fi
+
+    if ! tar -xzf "$TARBALL" -C "$WORKDIR"; then
+        rm -f "$TARBALL"
+        echo "Error: Failed to extract Tailscale source for version $DOWNLOAD_VERSION"
+        exit 1
+    fi
+    rm -f "$TARBALL"
+    mv "$WORKDIR/tailscale-${DOWNLOAD_VERSION#v}" "$SRC_DIR"
     echo "$DOWNLOAD_VERSION" > "$SRC_STAMP"
 fi
 

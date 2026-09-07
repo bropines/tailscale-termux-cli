@@ -50,6 +50,61 @@ binaries_are_current() {
     [ "$(cat "$BIN_DIR/$arch/.ts_version" 2>/dev/null || echo unknown)" = "$SRC_VERSION" ]
 }
 
+# Emit a pacman package from the same staged payload as the .deb.
+#
+# Termux ships a pacman-based variant (issue #9), whose packages are a tar
+# archive of the filesystem plus a .PKGINFO metadata file and an optional
+# .INSTALL scriptlet, both of which must come first in the archive.
+build_pacman_from_stage() {
+    local pkg_dir="$1" arch="$2"
+    local out="$DIST_DIR/tailscale-termux-${DEB_VERSION}-1-${arch}.pkg.tar.xz"
+    local stage="$DIST_DIR/.pacman_${arch}"
+
+    rm -rf "$stage"
+    mkdir -p "$stage"
+    # Same payload, minus the Debian-only control directory.
+    ( cd "$pkg_dir" && tar -cf - --exclude=./DEBIAN data ) | ( cd "$stage" && tar -xf - )
+
+    local size
+    size=$(du -sb "$stage" | cut -f1)
+
+    cat > "$stage/.PKGINFO" << PKGINFO
+pkgname = tailscale-termux
+pkgbase = tailscale-termux
+pkgver = ${DEB_VERSION}-1
+pkgdesc = Patched Tailscale CLI for Termux on Android 11+
+url = https://github.com/bropines/tailscale-termux-cli
+builddate = $(date +%s)
+packager = bropines <https://github.com/bropines/tailscale-termux-cli>
+size = $size
+arch = $arch
+license = BSD-3-Clause
+conflict = tailscale
+replaces = tailscale
+depend = termux-services
+depend = curl
+depend = wget
+depend = procps
+depend = coreutils
+PKGINFO
+
+    # pacman's equivalent of postinst; both call the same on-device script.
+    cat > "$stage/.INSTALL" << 'INSTALL'
+post_install() {
+    sh "${PREFIX:-/data/data/com.termux/files/usr}/libexec/tailscale-termux/post-install.sh" install || true
+}
+
+post_upgrade() {
+    sh "${PREFIX:-/data/data/com.termux/files/usr}/libexec/tailscale-termux/post-install.sh" upgrade || true
+}
+INSTALL
+
+    # .PKGINFO and .INSTALL must precede the payload in the archive.
+    ( cd "$stage" && tar -cf - .PKGINFO .INSTALL data | xz -T0 -c > "$out" )
+    rm -rf "$stage"
+    echo "-> Pacman package created successfully: $out"
+}
+
 build_deb_for_arch() {
     local arch="$1"
     local deb_arch=""
@@ -118,15 +173,28 @@ EOF
     mkdir -p "$bash_comp_dir" "$zsh_comp_dir" "$fish_comp_dir"
 
     echo "-> Generating shell completions..."
-    (
-        cd "$SRC_DIR"
-        # Build host-native tailscale binary once to generate completions quickly
-        go build -o "$WORKDIR/tailscale-host-$arch" ./cmd/tailscale
-    )
-    "$WORKDIR/tailscale-host-$arch" completion bash > "$bash_comp_dir/tailscale"
-    "$WORKDIR/tailscale-host-$arch" completion zsh > "$zsh_comp_dir/_tailscale"
-    "$WORKDIR/tailscale-host-$arch" completion fish > "$fish_comp_dir/tailscale.fish"
-    rm "$WORKDIR/tailscale-host-$arch"
+    # Prefer the binary we just built. On a Termux install the target is the
+    # host, so this both skips a second compile and avoids building *and*
+    # running a second copy of freshly downloaded upstream code on the
+    # packaging machine (which, for install.sh, is the user's phone).
+    local comp_bin="$BIN_DIR/$arch/tailscale"
+    local host_built=""
+    if ! "$comp_bin" completion bash > "$bash_comp_dir/tailscale" 2>/dev/null || [ ! -s "$bash_comp_dir/tailscale" ]; then
+        echo "   (target binary is not runnable here; building a host one)"
+        (
+            cd "$SRC_DIR"
+            go build -o "$WORKDIR/tailscale-host-$arch" ./cmd/tailscale
+        )
+        comp_bin="$WORKDIR/tailscale-host-$arch"
+        host_built=1
+        "$comp_bin" completion bash > "$bash_comp_dir/tailscale"
+    fi
+    "$comp_bin" completion zsh > "$zsh_comp_dir/_tailscale"
+    "$comp_bin" completion fish > "$fish_comp_dir/tailscale.fish"
+    # Not `[ ... ] && rm`: a false test would return 1 and trip `set -e`.
+    if [ -n "$host_built" ]; then
+        rm -f "$comp_bin"
+    fi
 
     # Register tailscale-cli shell integrations
     echo "complete -F _tailscale tailscale-cli" > "$bash_comp_dir/tailscale-cli"
@@ -794,24 +862,12 @@ Homepage: https://github.com/bropines/tailscale-termux-cli
 Description: Patched version of Tailscale CLI for Termux on Android 11+
 EOF
 
-    # 4.5 Generate Debian Postinst Script
-    cat << 'EOF' > "$pkg_dir/DEBIAN/postinst"
-#!/data/data/com.termux/files/usr/bin/sh
-set -e
-
-PREFIX="/data/data/com.termux/files/usr"
-TS_HOME="${HOME:-/data/data/com.termux/files/home}/.tailscale"
-
-# svlogd exits fatally if its log directory is missing, which leaves runsv
-# restarting the log service forever. Never fatal here though: under `set -e` a
-# failed mkdir would abort postinst and leave the package unconfigured.
-mkdir -p "$PREFIX/var/log/tailscaled" 2>/dev/null || true
-
-# dpkg passes the previously installed version as $2 on an upgrade, and
-# nothing on a fresh install. Only upgraders need warning about the change.
-if [ -n "${2:-}" ] && mkdir -p "$TS_HOME" 2>/dev/null; then
-    NOTICE="$TS_HOME/UPGRADE_NOTICE"
-    cat > "$NOTICE" << 'NOTICE_EOF'
+    # 4.5 Post-install logic, shared by the .deb and the pacman package.
+    # One implementation on the device rather than the same script written
+    # twice into two different packaging formats.
+    local notice_dir="$pkg_dir/data/data/com.termux/files/usr/share/tailscale-termux"
+    mkdir -p "$notice_dir"
+    cat << 'EOF' > "$notice_dir/upgrade-notice.txt"
 ==========================================================
  IMPORTANT: the SOCKS5 proxy now requires a password
 ==========================================================
@@ -841,14 +897,22 @@ app on the device.
 
 Delete this file to dismiss: rm ~/.tailscale/UPGRADE_NOTICE
 ==========================================================
-NOTICE_EOF
-    chmod 644 "$NOTICE" 2>/dev/null || true
-    # Let tailscale-cli show it again on first use: dpkg's output scrolls past.
-    rm -f "$TS_HOME/.upgrade_notice_shown"
-    echo ""
-    cat "$NOTICE"
-    echo ""
-fi
+EOF
+    chmod 644 "$notice_dir/upgrade-notice.txt"
+
+    cat << 'EOF' > "$libexec_dir/post-install.sh"
+#!/data/data/com.termux/files/usr/bin/sh
+# Shared post-install steps. $1 is "install" or "upgrade".
+# Nothing here may fail the packaging transaction, so every step is guarded.
+set -e
+
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+TS_HOME="${HOME:-/data/data/com.termux/files/home}/.tailscale"
+MODE="${1:-install}"
+
+# svlogd exits fatally if its log directory is missing, which leaves runsv
+# restarting the log service forever.
+mkdir -p "$PREFIX/var/log/tailscaled" 2>/dev/null || true
 
 if command -v termux-fix-shebang >/dev/null 2>&1; then
     termux-fix-shebang "$PREFIX/bin/tailscaled-start" \
@@ -861,6 +925,18 @@ if command -v termux-fix-shebang >/dev/null 2>&1; then
                        "$PREFIX/var/service/tailscaled/run" 2>/dev/null || true
 fi
 
+# Only upgraders need warning that the proxy stopped accepting anonymous
+# clients; a fresh install never had the old behaviour.
+NOTICE_SRC="$PREFIX/share/tailscale-termux/upgrade-notice.txt"
+if [ "$MODE" = "upgrade" ] && [ -f "$NOTICE_SRC" ] && mkdir -p "$TS_HOME" 2>/dev/null; then
+    cp "$NOTICE_SRC" "$TS_HOME/UPGRADE_NOTICE" 2>/dev/null || true
+    # Let tailscale-cli repeat it once: package manager output scrolls past.
+    rm -f "$TS_HOME/.upgrade_notice_shown"
+    echo ""
+    cat "$TS_HOME/UPGRADE_NOTICE" 2>/dev/null || true
+    echo ""
+fi
+
 if command -v sv-enable >/dev/null 2>&1; then
     sv-enable tailscaled 2>/dev/null || true
     sv up tailscaled 2>/dev/null || true
@@ -868,9 +944,22 @@ fi
 
 exit 0
 EOF
+    chmod 755 "$libexec_dir/post-install.sh"
+
+    # 4.6 Debian maintainer script
+    cat << 'EOF' > "$pkg_dir/DEBIAN/postinst"
+#!/data/data/com.termux/files/usr/bin/sh
+set -e
+PREFIX="/data/data/com.termux/files/usr"
+# dpkg passes the previously installed version as $2 on an upgrade,
+# and nothing on a fresh install.
+if [ -n "${2:-}" ]; then MODE=upgrade; else MODE=install; fi
+sh "$PREFIX/libexec/tailscale-termux/post-install.sh" "$MODE" || true
+exit 0
+EOF
     chmod 755 "$pkg_dir/DEBIAN/postinst"
 
-    # 4.6 Fix shebangs for Termux environment
+    # 4.7 Fix shebangs for Termux environment
     if command -v termux-fix-shebang >/dev/null 2>&1; then
         echo "-> Fixing script shebangs for Termux..."
         termux-fix-shebang "$usr_bin_dir"/* 2>/dev/null || true
@@ -880,6 +969,14 @@ EOF
     echo "-> Compressing package with dpkg-deb (xz)..."
     dpkg-deb -Zxz --build "$pkg_dir"
     echo "-> Package created successfully: ${pkg_dir}.deb"
+
+    # 6. Build the pacman package for Termux's pacman variant (issue #9)
+    if command -v xz >/dev/null 2>&1; then
+        echo "-> Building pacman package..."
+        build_pacman_from_stage "$pkg_dir" "$arch"
+    else
+        echo "-> xz not found; skipping the pacman package."
+    fi
 }
 
 # Ensure all required binaries are built before packaging to avoid race conditions

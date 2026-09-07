@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: BSD-3-Clause
+//
+// Termux patch for cmd/tailscaled. See LICENSE at the repository root.
+
 //go:build android || linux
 
 package main
@@ -41,4 +45,3 @@ func init() {
 		}
 	}
 }
-

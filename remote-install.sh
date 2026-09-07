@@ -6,17 +6,30 @@ set -euo pipefail
 echo "Tailscale Termux Remote Installer"
 echo "=============================="
 
+# Termux ships both a dpkg-based and a pacman-based variant (issue #9).
+if command -v dpkg >/dev/null 2>&1; then
+    PKG_FORMAT="deb"
+elif command -v pacman >/dev/null 2>&1; then
+    PKG_FORMAT="pacman"
+else
+    echo "Error: neither dpkg nor pacman was found."
+    echo "       This does not look like a Termux environment."
+    exit 1
+fi
+echo "[*] Package manager: $PKG_FORMAT"
+
 echo "[*] Checking requirements..."
 REQUIREMENTS=(
     "curl:curl"
     "wget:wget"
     "grep:grep"
-    "dpkg:dpkg"
-    "zstd:zstd"
-    # The package declares Depends: termux-services. Without it here, dpkg -i
-    # refuses to configure the package and the install ends half-done.
+    # The package depends on termux-services. Without it here, the install
+    # leaves an unconfigured package behind.
     "sv:termux-services"
 )
+if [ "$PKG_FORMAT" = "deb" ]; then
+    REQUIREMENTS+=("zstd:zstd")
+fi
 
 MISSING_PKGS=""
 for req in "${REQUIREMENTS[@]}"; do
@@ -75,9 +88,13 @@ case "$ARCH" in
 esac
 echo "-> Detected architecture: $ARCH"
 
-# Convert LATEST_TAG for deb version (e.g. v1.100.0 -> 1.100.0)
+# Convert LATEST_TAG to a package version (e.g. v1.100.0-3 -> 1.100.0.3)
 DEB_VERSION=$(echo "$LATEST_TAG" | sed 's/^v//' | tr '-' '.')
-DEB_FILE="tailscale-termux_${DEB_VERSION}_${ARCH}.deb"
+if [ "$PKG_FORMAT" = "deb" ]; then
+    DEB_FILE="tailscale-termux_${DEB_VERSION}_${ARCH}.deb"
+else
+    DEB_FILE="tailscale-termux-${DEB_VERSION}-1-${ARCH}.pkg.tar.xz"
+fi
 DEB_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$DEB_FILE"
 
 echo "[2/3] Downloading package: $DEB_FILE..."
@@ -92,30 +109,39 @@ if ! wget -q --show-progress -O "$DOWNLOAD_DIR/$DEB_FILE" "$DEB_URL"; then
     exit 1
 fi
 
-echo "[3/3] Installing package via dpkg..."
+echo "[3/3] Installing package..."
 # Stop the service first. A bare `pkill -f tailscaled` matches this project's
 # own `runsv tailscaled`, `svlogd` and `tail -f ...tailscaled.log` processes,
 # and killing runsv just makes runit restart the daemon a second later --
-# in the middle of dpkg -i.
+# in the middle of the install.
 if command -v sv >/dev/null 2>&1 && [ -d "$PREFIX/var/service/tailscaled" ]; then
     sv down tailscaled 2>/dev/null || true
 fi
 pkill -f -- "--statedir=$HOME/.tailscale" 2>/dev/null || true
 
-# dpkg -i avoids privilege-dropping metadata read errors in user directories.
-# It exits 1 when a dependency is unmet, having unpacked but not configured the
-# package -- `|| true` lets the `apt install -f` below actually do its job.
-dpkg -i "$DOWNLOAD_DIR/$DEB_FILE" || true
-if command -v apt >/dev/null 2>&1; then
-    apt install -f -y
-fi
-
-# Confirm the package really is configured, rather than trusting the banner.
-if ! dpkg-query -W -f='${Status}' tailscale-termux 2>/dev/null | grep -q "install ok installed"; then
-    echo "Error: the package was unpacked but not configured."
-    echo "       The .deb is kept at: $DOWNLOAD_DIR/$DEB_FILE"
-    echo "       Try: apt install -f -y && dpkg -i '$DOWNLOAD_DIR/$DEB_FILE'"
-    exit 1
+if [ "$PKG_FORMAT" = "deb" ]; then
+    # dpkg -i avoids privilege-dropping metadata read errors in user
+    # directories. It exits 1 when a dependency is unmet, having unpacked but
+    # not configured the package -- `|| true` lets `apt install -f` repair it.
+    dpkg -i "$DOWNLOAD_DIR/$DEB_FILE" || true
+    if command -v apt >/dev/null 2>&1; then
+        apt install -f -y
+    fi
+    # Confirm the package really is configured, rather than trusting the banner.
+    if ! dpkg-query -W -f='${Status}' tailscale-termux 2>/dev/null | grep -q "install ok installed"; then
+        echo "Error: the package was unpacked but not configured."
+        echo "       The package is kept at: $DOWNLOAD_DIR/$DEB_FILE"
+        echo "       Try: apt install -f -y && dpkg -i '$DOWNLOAD_DIR/$DEB_FILE'"
+        exit 1
+    fi
+else
+    pacman -U --noconfirm "$DOWNLOAD_DIR/$DEB_FILE" || true
+    if ! pacman -Q tailscale-termux >/dev/null 2>&1; then
+        echo "Error: pacman did not install the package."
+        echo "       The package is kept at: $DOWNLOAD_DIR/$DEB_FILE"
+        echo "       Try: pacman -U '$DOWNLOAD_DIR/$DEB_FILE'"
+        exit 1
+    fi
 fi
 
 if [ -f "$HOME/bin/tailscale" ] || [ -f "$HOME/bin/tailscaled" ]; then
