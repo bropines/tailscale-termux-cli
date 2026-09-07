@@ -28,7 +28,7 @@ tailscale up
 1. **Netmon Bypass (Android 11+)**: Intercepts interface discovery (`anet` ioctl, `/proc/net/if_inet6`, `ifconfig` fallback) to bypass Android netlink restrictions.
 2. **Userspace Networking**: Runs without Root or `/dev/net/tun` out of the box.
 3. **Automatic Socket Resolution**: Both `tailscale` and `tailscale-cli` route requests to `~/.tailscale/tailscaled.sock` without a manual `--socket` flag.
-4. **Auto-Start Daemon**: Invoking `tailscale` or `tailscale-cli` starts `tailscaled` if it is not running.
+4. **Auto-Start Daemon**: The `tailscale-cli` wrapper starts `tailscaled` if it is not running. (The bare `tailscale` binary only gets the socket path filled in — start the daemon yourself, or use the service.)
 5. **Runit (`termux-services`) Integration**: Background service management, started when a Termux session opens.
 6. **Authenticated SOCKS5 proxy**: credentials are generated for you on first start — see below.
 

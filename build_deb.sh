@@ -871,7 +871,15 @@ fi
 
 echo "New version available: $LATEST_TAG (Current: $CURRENT_VERSION)"
 echo "Updating via remote installer..."
-curl -fsSL "https://raw.githubusercontent.com/$REPO/main/remote-install.sh" | bash
+# Fetch the installer from the release tag, not from main. Pulling main means
+# someone who installed a reviewed version later runs whatever is on the
+# default branch at update time.
+INSTALLER="https://raw.githubusercontent.com/$REPO/$LATEST_TAG/remote-install.sh"
+if ! curl -fsSL "$INSTALLER" -o /dev/null 2>/dev/null; then
+    echo "Note: no installer at tag $LATEST_TAG; falling back to main."
+    INSTALLER="https://raw.githubusercontent.com/$REPO/main/remote-install.sh"
+fi
+curl -fsSL "$INSTALLER" | bash
 EOF
     chmod +x "$helper_update"
 

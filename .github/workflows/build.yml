@@ -91,6 +91,9 @@ jobs:
         run: |
           mkdir -p release_assets
           find artifacts/ -type f \( -name "tailscale-*" -o -name "tailscaled-*" -o -name "*.deb" -o -name "*.pkg.tar.xz" \) -exec cp {} release_assets/ \;
+          # BSD-3 clause 2 asks for the notice to travel with binary
+          # distributions; the loose binaries here are not inside a package.
+          cp LICENSE release_assets/LICENSE
           # Publish checksums: remote-install.sh and tailscale-update pull these
           # assets over plain HTTPS with nothing to verify them against.
           ( cd release_assets && sha256sum ./* > SHA256SUMS )

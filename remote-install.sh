@@ -26,6 +26,7 @@ REQUIREMENTS=(
     # The package depends on termux-services. Without it here, the install
     # leaves an unconfigured package behind.
     "sv:termux-services"
+    "sha256sum:coreutils"
 )
 if [ "$PKG_FORMAT" = "deb" ]; then
     REQUIREMENTS+=("zstd:zstd")
@@ -107,6 +108,27 @@ if ! wget -q --show-progress -O "$DOWNLOAD_DIR/$DEB_FILE" "$DEB_URL"; then
     rm -f "$DOWNLOAD_DIR/$DEB_FILE"
     echo "Error: failed to download $DEB_URL"
     exit 1
+fi
+
+# Verify against the checksums published with the release. This is what makes
+# publishing SHA256SUMS worth anything; the download itself is a plain fetch.
+echo " -> Verifying checksum..."
+EXPECTED_SHA=$(curl -fsSL "https://github.com/$REPO/releases/download/$LATEST_TAG/SHA256SUMS" 2>/dev/null \
+    | awk -v f="$DEB_FILE" '{ n = $2; sub(/^\.\//, "", n); if (n == f) print $1 }' | head -n1 || true)
+if [ -n "$EXPECTED_SHA" ]; then
+    ACTUAL_SHA=$(sha256sum "$DOWNLOAD_DIR/$DEB_FILE" | cut -d' ' -f1)
+    if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+        rm -f "$DOWNLOAD_DIR/$DEB_FILE"
+        echo "Error: checksum mismatch for $DEB_FILE."
+        echo "       expected: $EXPECTED_SHA"
+        echo "       actual:   $ACTUAL_SHA"
+        echo "       Refusing to install. Report this if it persists."
+        exit 1
+    fi
+    echo "    OK ($ACTUAL_SHA)"
+else
+    # Releases published before SHA256SUMS existed have nothing to check.
+    echo "    No SHA256SUMS published for $LATEST_TAG; skipping verification."
 fi
 
 echo "[3/3] Installing package..."
