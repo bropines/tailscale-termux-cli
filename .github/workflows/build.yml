@@ -81,11 +81,32 @@ jobs:
         run: |
           mkdir -p release_assets
           find artifacts/ -type f \( -name "tailscale-*" -o -name "tailscaled-*" -o -name "*.deb" \) -exec cp {} release_assets/ \;
+          # Publish checksums: remote-install.sh and tailscale-update pull these
+          # assets over plain HTTPS with nothing to verify them against.
+          ( cd release_assets && sha256sum ./* > SHA256SUMS )
           echo "Release assets prepared:"
           ls -la release_assets/
+          cat release_assets/SHA256SUMS
+
+      # A reusable workflow inherits the CALLER's event, so on the nightly
+      # check-updates run github.event_name is "schedule" and github.ref is
+      # "refs/heads/main" -- every disjunct of the old condition was false and
+      # the release step silently skipped while the job still reported success.
+      # inputs.ts_version is populated on both workflow_call and
+      # workflow_dispatch, and empty on a tag push.
+      - name: Decide whether to publish
+        id: gate
+        env:
+          TS_VERSION_INPUT: ${{ inputs.ts_version }}
+        run: |
+          if [ -n "$TS_VERSION_INPUT" ] || [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch'
+        if: steps.gate.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.ts_version || github.event.inputs.ts_version || github.ref_name }}
@@ -98,7 +119,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Combined Artifacts
-        if: ${{ ! (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch') }}
+        if: steps.gate.outputs.publish != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: tailscale-termux-cli-binaries

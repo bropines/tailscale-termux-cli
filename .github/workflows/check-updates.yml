@@ -6,7 +6,7 @@ on:
   workflow_dispatch: # Manual trigger
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check-updates:
@@ -23,30 +23,54 @@ jobs:
       - name: Get latest upstream tag
         id: upstream
         run: |
-          UPSTREAM_TAG=$(git ls-remote --tags --sort="v:refname" https://github.com/tailscale/tailscale.git | grep -v 'pre\|beta\|rc\|{}$' | tail -n1 | sed 's/.*\///')
-          echo "tag=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          UPSTREAM_TAG=$(git ls-remote --tags --sort="v:refname" https://github.com/tailscale/tailscale.git \
+            | grep -v 'pre\|beta\|rc\|{}$' | tail -n1 | sed 's/.*\///')
+          if [ -z "$UPSTREAM_TAG" ]; then
+            echo "Could not determine the upstream tag." >&2
+            exit 1
+          fi
+          echo "tag=$UPSTREAM_TAG" >> "$GITHUB_OUTPUT"
           echo "Found upstream tag: $UPSTREAM_TAG"
 
       - name: Get latest local release
         id: local
         run: |
-          LOCAL_RELEASE=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/latest" | grep -Po '"tag_name": "\K.*?(?=")' || echo "none")
+          set -euo pipefail
+          LOCAL_RELEASE=$(curl -fsS "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/latest" 2>/dev/null \
+            | grep -Po '"tag_name": "\K.*?(?=")' || true)
           if [ -z "$LOCAL_RELEASE" ]; then LOCAL_RELEASE="none"; fi
-          echo "tag=$LOCAL_RELEASE" >> $GITHUB_OUTPUT
+          echo "tag=$LOCAL_RELEASE" >> "$GITHUB_OUTPUT"
           echo "Found local release: $LOCAL_RELEASE"
 
       - name: Compare tags
         id: compare
+        # Interpolating ${{ }} straight into a shell body puts a value from a
+        # third-party repository into this runner's command line; passing it
+        # through env keeps it a string.
+        env:
+          UPSTREAM_TAG: ${{ steps.upstream.outputs.tag }}
+          LOCAL_TAG: ${{ steps.local.outputs.tag }}
         run: |
-          if [ "${{ steps.upstream.outputs.tag }}" != "${{ steps.local.outputs.tag }}" ]; then
-            echo "new_version=true" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          # Releases here are tagged like "v1.100.0-10" (upstream version plus a
+          # build number), so comparing them raw against upstream's "v1.100.0"
+          # never matched and rebuilt all four architectures every single night.
+          normalize() { echo "${1#v}" | sed -E 's/-[0-9]+$//'; }
+          UP_NORM=$(normalize "$UPSTREAM_TAG")
+          LOCAL_NORM=$(normalize "$LOCAL_TAG")
+          echo "Comparing upstream '$UP_NORM' against local '$LOCAL_NORM'"
+          if [ "$UP_NORM" != "$LOCAL_NORM" ]; then
+            echo "new_version=true" >> "$GITHUB_OUTPUT"
           else
-            echo "new_version=false" >> $GITHUB_OUTPUT
+            echo "new_version=false" >> "$GITHUB_OUTPUT"
           fi
 
   build:
     needs: check-updates
     if: needs.check-updates.outputs.new_version == 'true'
+    permissions:
+      contents: write
     uses: ./.github/workflows/build.yml
     with:
       ts_version: ${{ needs.check-updates.outputs.tag }}
