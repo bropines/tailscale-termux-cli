@@ -94,8 +94,40 @@ jobs:
           # BSD-3 clause 2 asks for the notice to travel with binary
           # distributions; the loose binaries here are not inside a package.
           cp LICENSE release_assets/LICENSE
-          # Publish checksums: remote-install.sh and tailscale-update pull these
-          # assets over plain HTTPS with nothing to verify them against.
+          # The public half of the package signing key, so it can be imported
+          # straight from the release as well as from the repository.
+          cp keys/tailscale-termux-cli.asc release_assets/
+
+      # pacman refuses `pacman -U <URL>` unless a detached .sig sits next to
+      # the package, so publish one. Signing must happen before SHA256SUMS is
+      # written, or the signatures would not be covered by it.
+      - name: Sign pacman packages
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.PACMAN_GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.PACMAN_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GPG_PRIVATE_KEY:-}" ]; then
+            echo "::warning::No signing key configured; pacman packages published unsigned."
+            echo "pacman -U <URL> will not work without a .sig beside the package."
+            exit 0
+          fi
+          GNUPGHOME="$(mktemp -d)"; export GNUPGHOME; chmod 700 "$GNUPGHOME"
+          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --quiet --import
+          for f in release_assets/*.pkg.tar.xz; do
+            # Detached and binary, which is the form pacman looks for.
+            gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
+                --detach-sign --no-armor --output "$f.sig" "$f"
+            gpg --verify "$f.sig" "$f"
+            echo "signed $(basename "$f")"
+          done
+          gpgconf --kill all || true
+          rm -rf "$GNUPGHOME"
+
+      - name: Generate checksums
+        run: |
+          # remote-install.sh and tailscale-update pull these assets over plain
+          # HTTPS with nothing else to verify them against.
           ( cd release_assets && sha256sum ./* > SHA256SUMS )
           echo "Release assets prepared:"
           ls -la release_assets/

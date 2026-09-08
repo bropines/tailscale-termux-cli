@@ -158,6 +158,33 @@ else
     echo "    No SHA256SUMS published for $LATEST_TAG; skipping verification."
 fi
 
+# Additionally verify the GPG signature, but only if the signing key is already
+# in this user's keyring -- importing it automatically would defeat the point.
+#
+# The .sig is fetched OUTSIDE $DOWNLOAD_DIR on purpose: a signature sitting
+# next to the package makes pacman verify it against its own, separate
+# keyring, which would break the install for everyone who has not imported the
+# key there.
+SIGNING_KEY_FPR="2D5133D5E2C7C8E7BE2D0CBB6EAA7CF6CEFB203E"
+case "$DEB_FILE" in
+    *.pkg.tar.xz)
+        if command -v gpg >/dev/null 2>&1 && gpg --list-keys "$SIGNING_KEY_FPR" >/dev/null 2>&1; then
+            SIG_TMP="$(mktemp -d)"
+            if curl -fsSL "$DEB_URL.sig" -o "$SIG_TMP/pkg.sig" 2>/dev/null; then
+                if gpg --verify "$SIG_TMP/pkg.sig" "$DOWNLOAD_DIR/$DEB_FILE" >/dev/null 2>&1; then
+                    echo " -> GPG signature OK (${SIGNING_KEY_FPR: -16})"
+                else
+                    rm -rf "$SIG_TMP"
+                    echo "Error: GPG signature does not verify for $DEB_FILE."
+                    echo "       Refusing to install."
+                    exit 1
+                fi
+            fi
+            rm -rf "$SIG_TMP"
+        fi
+        ;;
+esac
+
 echo "[3/3] Installing package..."
 # Stop the service first. A bare `pkill -f tailscaled` matches this project's
 # own `runsv tailscaled`, `svlogd` and `tail -f ...tailscaled.log` processes,

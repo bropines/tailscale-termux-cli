@@ -12,7 +12,24 @@ Run this single command in Termux to download and install the latest package:
 curl -fsSL https://raw.githubusercontent.com/bropines/tailscale-termux-cli/main/remote-install.sh | bash
 ```
 
-The installer detects whether your Termux uses **dpkg** or **pacman** and fetches the matching package (`.deb` or `.pkg.tar.xz`). Releases carry a `SHA256SUMS` file if you want to verify the download by hand.
+The installer detects whether your Termux uses **dpkg** or **pacman** and fetches the matching package (`.deb` or `.pkg.tar.xz`). It asks Termux itself (`TERMUX_APP_PACKAGE_MANAGER`) rather than looking for a `dpkg` binary, because a pacman-based Termux has one too. Releases carry a `SHA256SUMS` file if you want to verify the download by hand.
+
+### Installing straight from a URL with pacman
+
+The one-line installer above needs none of this — it downloads the package and installs the local file. But `pacman -U <URL>` refuses to fetch a package without a detached signature beside it, so releases ship one. To use that form, import the signing key into **pacman's** keyring first (it is separate from your personal GPG keyring):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bropines/tailscale-termux-cli/main/keys/tailscale-termux-cli.asc | pacman-key --add -
+pacman-key --lsign-key 2D5133D5E2C7C8E7BE2D0CBB6EAA7CF6CEFB203E
+```
+
+Then:
+
+```bash
+pacman -U https://github.com/bropines/tailscale-termux-cli/releases/latest/download/tailscale-termux-1.102.3.4-1-aarch64.pkg.tar.xz
+```
+
+The key is `2D5133D5E2C7C8E7BE2D0CBB6EAA7CF6CEFB203E`, published at [`keys/tailscale-termux-cli.asc`](keys/tailscale-termux-cli.asc) and attached to every release. If you have it in your ordinary GPG keyring, the one-line installer verifies the signature as well as the checksum.
 
 Once installed, the `tailscaled` background service is enabled and started. You can immediately connect:
 
