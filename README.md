@@ -114,7 +114,7 @@ You can use standard `tailscale` commands or the `tailscale-cli` wrapper interch
   ```bash
   tailscale-socks5
   ```
-* **Run functional test (SOCKS5 & DNS)**:
+* **Diagnose a problem** (daemon, login, DNS, network, proxy — run this first if anything misbehaves):
   ```bash
   tailscale-test
   ```
@@ -207,8 +207,35 @@ Two build-time guards worth knowing about:
 
 ## 💡 Troubleshooting
 
+**Start here.** One command checks the daemon, the socket, login state, the resolver, network reachability and the proxy, and prints the tail of the daemon log:
+
+```bash
+tailscale-test
+```
+
+It reports every check rather than stopping at the first failure, and its output is what to paste into an issue. For the full log:
+
+```bash
+tailscaled-log
+```
+
 <details>
-<summary><b>1. "failed to connect to local tailscaled process"</b></summary>
+<summary><b>1. <code>tailscale up</code> hangs forever and status says "Logged out."</b></summary>
+<br>
+Almost always DNS. Termux has no <code>/etc/resolv.conf</code>, so the daemon's resolver is pinned to <code>8.8.8.8</code> — and some networks and providers block it. Your shell resolves names through Android and works fine, which is why this is confusing.
+
+`tailscale-test` says outright whether that resolver is reachable. If it is not:
+
+```bash
+echo 'TS_DNS_SERVER=1.1.1.1' >> ~/.tailscale/.env
+sv restart tailscaled
+```
+
+Any resolver works, including one on your own network.
+</details>
+
+<details>
+<summary><b>2. "failed to connect to local tailscaled process"</b></summary>
 <br>
 If the daemon was stopped manually, start it using:
 
@@ -222,7 +249,7 @@ sv up tailscaled
 </details>
 
 <details>
-<summary><b>2. My SOCKS5 client stopped working after an update</b></summary>
+<summary><b>3. My SOCKS5 client stopped working after an update</b></summary>
 <br>
 The proxy now requires a password. Get it with:
 
@@ -235,7 +262,7 @@ and add the username/password to your client, or use the printed
 </details>
 
 <details>
-<summary><b>3. Shell Autocompletions not working</b></summary>
+<summary><b>4. Shell Autocompletions not working</b></summary>
 <br>
 Autocompletions for **Bash**, **Zsh**, and **Fish** are installed automatically. Restart your shell session or reload your shell profile to apply them.
 </details>

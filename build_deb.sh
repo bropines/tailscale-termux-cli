@@ -828,61 +828,146 @@ EOF
     # Helper: tailscale-test
     cat << 'EOF' > "$helper_test"
 #!/data/data/com.termux/files/usr/bin/env bash
-# Helper script to test tailscaled status and connectivity in Termux
-set -euo pipefail
+# Diagnose a Termux tailscale setup.
+#
+# Every check runs and reports; none of them aborts the rest. The old version
+# exited at the first failure, which meant that "daemon up but not logged in"
+# printed one line and stopped -- precisely the case where someone needs to be
+# told what to look at next.
+set -uo pipefail
 
 . "${PREFIX:-/data/data/com.termux/files/usr}/libexec/tailscale-termux/common.sh"
 
-echo "Tailscale Functional Test"
-echo "========================="
-if ! daemon_running; then
-    echo "[-] Error: tailscaled is not running."
-    exit 1
-fi
+PROBLEMS=0
+ok()   { echo "[+] $*"; }
+bad()  { echo "[-] $*"; PROBLEMS=$((PROBLEMS + 1)); }
+note() { echo "[*] $*"; }
+hint() { echo "    $*"; }
 
-IP=$(tailscale-cli ip -4 2>/dev/null || echo "")
-if [ -n "$IP" ]; then
-    echo "[+] Authenticated. IP: $IP"
+echo "Tailscale Termux Diagnostics"
+echo "============================"
+
+# 1. Daemon
+PIDS="$(daemon_pids)"
+if [ -n "$PIDS" ]; then
+    ok "Daemon running (pid $PIDS)"
 else
-    echo "[-] Error: Not authenticated."
-    exit 1
+    bad "Daemon is not running"
+    if service_present; then hint "Start it: sv up tailscaled"; else hint "Start it: tailscaled-start"; fi
 fi
 
-# Ask the running daemon where it listens rather than trusting socks_addr,
-# which goes stale whenever the daemon is restarted by another path.
+# 2. Control socket
+if [ -S "$SOCKET" ]; then
+    ok "Control socket present"
+else
+    bad "No control socket at $SOCKET"
+fi
+
+# 3. Backend state, which distinguishes "not logged in" from "cannot reach control plane"
+# The raw binary, not the tailscale-cli wrapper: the wrapper auto-starts the
+# daemon, which would quietly repair the very thing being diagnosed.
+TS_BIN=("$BIN_DIR/tailscale" --socket="$SOCKET")
+STATE=$("${TS_BIN[@]}" status --json 2>/dev/null | sed -n 's/.*"BackendState"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+case "${STATE:-}" in
+    Running)
+        ok "Backend state: Running"
+        ;;
+    NeedsLogin|Stopped|NoState)
+        bad "Backend state: $STATE (not logged in)"
+        hint "Log in with: tailscale up"
+        ;;
+    "")
+        bad "Could not ask the daemon for its state"
+        ;;
+    *)
+        note "Backend state: $STATE"
+        ;;
+esac
+
+IP=$("${TS_BIN[@]}" ip -4 2>/dev/null | head -1 || true)
+if [ -n "$IP" ]; then
+    ok "Tailnet IP: $IP"
+fi
+
+# 4. The resolver the daemon was told to use, and whether it is reachable.
+#    This is the usual cause of `tailscale up` hanging forever: the shell
+#    resolves names through Android, the daemon does not.
+DNS_SRV="${TS_DNS_SERVER:-}"
+if [ -z "$DNS_SRV" ] && [ -f "$ENV_FILE" ]; then
+    DNS_SRV=$(sed -n 's/^[[:space:]]*TS_DNS_SERVER=//p' "$ENV_FILE" | tr -d '"' | head -1)
+fi
+[ -n "$DNS_SRV" ] || DNS_SRV="8.8.8.8"
+case "$DNS_SRV" in
+    system|default|off) note "Daemon resolver: system default" ;;
+    *)
+        DNS_HOST="${DNS_SRV%%:*}"
+        if timeout 6 bash -c "cat < /dev/null > /dev/tcp/$DNS_HOST/53" 2>/dev/null; then
+            ok "Daemon resolver $DNS_HOST reachable"
+        else
+            bad "Daemon resolver $DNS_HOST is not reachable"
+            hint "Some networks block public resolvers. Pick another one:"
+            hint "  echo 'TS_DNS_SERVER=1.1.1.1' >> $ENV_FILE && sv restart tailscaled"
+        fi
+        ;;
+esac
+
+# 5. Plain internet reachability, resolved by Android rather than by the daemon.
+if curl -sS --max-time 15 -o /dev/null https://controlplane.tailscale.com 2>/dev/null; then
+    ok "controlplane.tailscale.com reachable from the shell"
+else
+    bad "Cannot reach controlplane.tailscale.com from the shell either"
+    hint "This looks like a general network or firewall problem, not a daemon one."
+fi
+
+# 6. SOCKS5
 SOCKS_ADDR="$(live_socks_addr 2>/dev/null || true)"
 if [ -z "$SOCKS_ADDR" ] && [ -f "$SOCKS_ADDR_FILE" ]; then
     SOCKS_ADDR="$(cat "$SOCKS_ADDR_FILE")"
 fi
-
 if [ -z "$SOCKS_ADDR" ]; then
-    echo "[*] SOCKS5 test skipped: the daemon is running without --socks5-server."
-    echo "    Enable it by setting TS_SOCKS5_PORT in $ENV_FILE."
-    echo "========================="
-    exit 0
+    note "SOCKS5 proxy is off (set TS_SOCKS5_PORT in $ENV_FILE to enable)"
+elif [ -z "$IP" ]; then
+    note "SOCKS5 on $SOCKS_ADDR — not tested, the node is not logged in yet"
+else
+    load_credentials
+    CURL_AUTH=""
+    if [ -n "${TS_SOCKS5_USER:-}" ] && [ -n "${TS_SOCKS5_PASS:-}" ]; then
+        CURL_AUTH="$TS_SOCKS5_USER:$TS_SOCKS5_PASS@"
+    else
+        note "No SOCKS5 credentials on file; testing unauthenticated"
+    fi
+    if curl -s --max-time 20 --socks5 "$CURL_AUTH$SOCKS_ADDR" https://1.1.1.1 > /dev/null; then
+        ok "SOCKS5 connectivity (direct IP)"
+    else
+        bad "SOCKS5 connectivity (direct IP) failed"
+    fi
+    if curl -s --max-time 20 --socks5-hostname "$CURL_AUTH$SOCKS_ADDR" https://api.ipify.org > /dev/null; then
+        ok "SOCKS5 name resolution"
+    else
+        bad "SOCKS5 name resolution failed"
+        hint "Try: tailscale up --accept-dns=false, or set global DNS in the admin console."
+    fi
 fi
 
-load_credentials
-CURL_AUTH=""
-if [ -n "${TS_SOCKS5_USER:-}" ] && [ -n "${TS_SOCKS5_PASS:-}" ]; then
-    CURL_AUTH="$TS_SOCKS5_USER:$TS_SOCKS5_PASS@"
+echo "============================"
+if [ "$PROBLEMS" -eq 0 ]; then
+    echo "No problems found."
 else
-    echo "[!] No credentials on file; testing the proxy unauthenticated."
+    echo "$PROBLEMS problem(s) above."
+    echo ""
+    echo "Recent daemon log (full log: tailscaled-log):"
+    LOG_SRC=""
+    [ -f "$SVLOG_DIR/current" ] && LOG_SRC="$SVLOG_DIR/current"
+    [ -z "$LOG_SRC" ] && [ -f "$LOG_FILE" ] && LOG_SRC="$LOG_FILE"
+    if [ -n "$LOG_SRC" ]; then
+        tail -n 15 "$LOG_SRC" | sed 's/^/  /'
+    else
+        echo "  (no log file found)"
+    fi
+    echo ""
+    echo "Please include this output when reporting a problem:"
+    echo "  https://github.com/bropines/tailscale-termux-cli/issues"
 fi
-
-echo "[*] Testing SOCKS5 on $SOCKS_ADDR..."
-if curl -s --socks5 "$CURL_AUTH$SOCKS_ADDR" https://1.1.1.1 > /dev/null; then
-    echo "[+] SOCKS5 Connectivity (Direct IP): OK"
-else
-    echo "[-] SOCKS5 Connectivity (Direct IP): FAILED"
-fi
-if curl -s --socks5-hostname "$CURL_AUTH$SOCKS_ADDR" https://api.ipify.org > /dev/null; then
-    echo "[+] SOCKS5 Resolution (Hostname): OK"
-else
-    echo "[-] SOCKS5 Resolution (Hostname): FAILED (DNS issue in daemon)"
-    echo "    Tip: Use 'tailscale-cli up --accept-dns=false' or set global DNS in Admin Console."
-fi
-echo "========================="
 EOF
     chmod +x "$helper_test"
 
