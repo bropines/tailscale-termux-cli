@@ -160,7 +160,7 @@ Configure the daemon by creating/editing `~/.tailscale/.env`. It is read on **bo
 | `TS_SOCKS5_NO_AUTH` | proxy credentials | `1` disables proxy authentication (**not recommended**) |
 | `TS_HTTP_PROXY` | `--outbound-http-proxy-listen` | HTTP proxy address |
 | `TS_PORT` | `--port` | UDP port for WireGuard |
-| `TS_DNS_SERVER` | resolver | Resolver to use (default `8.8.8.8`); `system` keeps Go's default |
+| `TS_DNS_SERVER` | resolver | Resolver to use (default: the device's own, falling back to `8.8.8.8`); `system` keeps Go's default |
 | `TS_LOG_VERBOSITY` | log verbosity | `1`, `2`… (`TS_VERBOSE` is accepted as an alias) |
 | `TS_NO_LOGS_NO_SUPPORT` | log upload | `true` disables log upload to Tailscale (`TS_NO_LOGS` is an alias) |
 | `TS_EXTRA_ARGS` | (raw flags) | Additional raw flags to pass |
@@ -180,7 +180,14 @@ Changes apply on the next daemon restart (`sv restart tailscaled`, or `tailscale
 
 Worth knowing before you put this on a tailnet you do not own:
 
-* **DNS**: the binaries are built with `CGO_ENABLED=0`, so Go uses its pure-Go resolver, which wants `/etc/resolv.conf` — a file Termux does not have. The patch therefore points the resolver at `8.8.8.8:53`, meaning the daemon's lookups go to Google rather than your network's DNS. Change it with `TS_DNS_SERVER`, or set `TS_DNS_SERVER=system` to opt out.
+* **DNS**: the binaries are built with `CGO_ENABLED=0`, so Go uses its pure-Go resolver, which wants `/etc/resolv.conf` — a file Termux does not have. The patch therefore installs a resolver itself. It first asks Android for the one the device is already using (`getprop net.dns1`, then `net.dns2`), so the daemon's lookups follow the network you are on; the value is only used if it parses as an IP address and is not loopback or inside Tailscale's own `100.64.0.0/10`. On many modern Android versions those properties are empty, and then it falls back to `8.8.8.8:53` — the daemon's lookups go to Google rather than your network's DNS. The daemon says which it picked at startup:
+
+  ```
+  [Termux] DNS resolver pinned to 192.168.1.1:53 (system resolver, net.dns1)
+  [Termux] DNS resolver pinned to 8.8.8.8:53 (fallback, no system resolver reported)
+  ```
+
+  Override either with `TS_DNS_SERVER`, or set `TS_DNS_SERVER=system` to opt out and leave Go's default resolver alone.
 * **Reported identity**: the daemon reports itself to the control plane as `App=tailscale-cli`, `DeviceModel=Termux`. This avoids mobile-specific client policies. Tailnet admins relying on client type for posture rules should know this node reports as a CLI client.
 
 ---
@@ -222,9 +229,9 @@ tailscaled-log
 <details>
 <summary><b>1. <code>tailscale up</code> hangs forever and status says "Logged out."</b></summary>
 <br>
-Almost always DNS. Termux has no <code>/etc/resolv.conf</code>, so the daemon's resolver is pinned to <code>8.8.8.8</code> — and some networks and providers block it. Your shell resolves names through Android and works fine, which is why this is confusing.
+Almost always DNS. Termux has no <code>/etc/resolv.conf</code>, so the daemon pins a resolver of its own — the device's, if Android reports one, otherwise <code>8.8.8.8</code>, which some networks and providers block. Your shell resolves names through Android and works fine, which is why this is confusing.
 
-`tailscale-test` says outright whether that resolver is reachable. If it is not:
+`tailscaled-log` shows which one this daemon chose; it is the `[Termux] DNS resolver` line printed at startup. `tailscale-test` then says whether a resolver is reachable (with `TS_DNS_SERVER` unset it checks the `8.8.8.8` fallback). If it is not, name one yourself:
 
 ```bash
 echo 'TS_DNS_SERVER=1.1.1.1' >> ~/.tailscale/.env
