@@ -114,6 +114,7 @@ depend = curl
 depend = wget
 depend = procps
 depend = coreutils
+depend = resolv-conf
 PKGINFO
 
     # pacman's equivalent of postinst; both call the same on-device script.
@@ -892,48 +893,25 @@ fi
 # 4. The resolver the daemon was told to use, and whether it is reachable.
 #    This is the usual cause of `tailscale up` hanging forever: the shell
 #    resolves names through Android, the daemon does not.
-# Ask the daemon what it actually chose, from the line it logs at startup.
-# Recomputing the default here would be wrong: with TS_DNS_SERVER unset the
-# daemon asks Android for its own resolver, so the answer depends on the
-# network the phone is on.
-DNS_LINE=""
-for _f in "$SVLOG_DIR/current" "$LOG_FILE"; do
-    [ -f "$_f" ] || continue
-    DNS_LINE=$(grep -a '\[Termux\] DNS resolver' "$_f" | tail -n1)
-    [ -n "$DNS_LINE" ] && break
-done
-case "$DNS_LINE" in
-    *"system default"*)
-        note "Daemon resolver: system default (Go's own)"
-        ;;
-    *"pinned to "*)
-        DNS_SRV=${DNS_LINE#*pinned to }
-        DNS_SRV=${DNS_SRV%% *}
-        # Strip the port, coping with [v6]:53 as well as v4:53.
-        DNS_HOST=${DNS_SRV%:*}
-        DNS_HOST=${DNS_HOST#[}
-        DNS_HOST=${DNS_HOST%]}
-        if timeout 6 bash -c "cat < /dev/null > /dev/tcp/$DNS_HOST/53" 2>/dev/null; then
-            ok "Daemon resolver $DNS_HOST reachable"
-        else
-            bad "Daemon resolver $DNS_HOST is not reachable"
-            case "$DNS_LINE" in
-                *fallback*)
-                    hint "That is the built-in fallback, and some networks block public"
-                    hint "resolvers. Point it at one that works here:"
-                    hint "  echo 'TS_DNS_SERVER=1.1.1.1' >> $ENV_FILE && sv restart tailscaled"
-                    ;;
-                *)
-                    hint "Set a different one:"
-                    hint "  echo 'TS_DNS_SERVER=1.1.1.1' >> $ENV_FILE && sv restart tailscaled"
-                    ;;
-            esac
-        fi
-        ;;
-    "")
-        note "Daemon resolver: unknown (no startup line in the log yet)"
-        ;;
-esac
+# The daemon resolves through $PREFIX/etc/resolv.conf: the Go toolchain it is
+# built with carries Termux's patch redirecting Go's hardcoded /etc/resolv.conf
+# there. So that file is the authority on which resolver it uses.
+RESOLV="${PREFIX:-/data/data/com.termux/files/usr}/etc/resolv.conf"
+if [ ! -r "$RESOLV" ]; then
+    bad "No $RESOLV — the daemon has no resolver and every lookup will fail"
+    hint "Install it: pkg install resolv-conf"
+else
+    DNS_HOST=$(sed -n 's/^[[:space:]]*nameserver[[:space:]]\+//p' "$RESOLV" | head -n1)
+    if [ -z "$DNS_HOST" ]; then
+        bad "$RESOLV has no nameserver line"
+    elif timeout 6 bash -c "cat < /dev/null > /dev/tcp/$DNS_HOST/53" 2>/dev/null; then
+        ok "Resolver $DNS_HOST reachable (from $RESOLV)"
+    else
+        bad "Resolver $DNS_HOST is not reachable (from $RESOLV)"
+        hint "Some networks block public resolvers. Point it at one that works:"
+        hint "  echo 'nameserver 1.1.1.1' > $RESOLV && sv restart tailscaled"
+    fi
+fi
 
 # 5. Plain internet reachability, resolved by Android rather than by the daemon.
 if curl -sS --max-time 15 -o /dev/null https://controlplane.tailscale.com 2>/dev/null; then
@@ -1044,7 +1022,7 @@ Package: tailscale-termux
 Version: $DEB_VERSION
 Architecture: $deb_arch
 Maintainer: bropines <https://github.com/bropines/tailscale-termux-cli>
-Depends: termux-services, curl, wget, procps, coreutils, zstd
+Depends: termux-services, curl, wget, procps, coreutils, zstd, resolv-conf
 Conflicts: tailscale
 Replaces: tailscale
 Section: net
@@ -1072,6 +1050,15 @@ working after this update, that is why.
 
   Show your credentials:   tailscale-socks5
   Copy a ready-made URL:   tailscale-socks5 --url
+
+DNS also moved. The daemon used to be hardwired to 8.8.8.8;
+it now uses the same resolver as the rest of your Termux:
+
+    $PREFIX/etc/resolv.conf
+
+Edit that file to change it. TS_SOCKS5-style TS_DNS_SERVER no
+longer does anything -- if you had it in ~/.tailscale/.env,
+move the address into resolv.conf instead.
 
 Also changed:
   * The manual `tailscaled-start` used to pick a random port

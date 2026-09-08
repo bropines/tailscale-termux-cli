@@ -55,6 +55,22 @@ jobs:
             ${{ runner.os }}-go-${{ matrix.arch }}-
             ${{ runner.os }}-go-
 
+      # Go refuses GOOS=android without cgo on arm/386/amd64, so those need the
+      # NDK's C compiler. Runners ship one; fail loudly here rather than deep
+      # inside the build if that ever changes.
+      - name: Locate Android NDK
+        run: |
+          set -euo pipefail
+          NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_ROOT:-}}}"
+          if [ -z "$NDK" ] || [ ! -d "$NDK" ]; then
+            echo "::error::No Android NDK on this runner."
+            exit 1
+          fi
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "Using NDK: $NDK"
+          ls "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/" | grep -c 'android24-clang$' \
+            | sed 's/^/api24 clang wrappers: /'
+
       - name: Build Binaries and Deb Package
         env:
           TS_VERSION: ${{ inputs.ts_version || github.event.inputs.ts_version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}

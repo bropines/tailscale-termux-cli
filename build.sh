@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tailscale Termux CLI Builder
-# Optimized for Android 11+ with ifconfig-based netmon patch and duplicate os.Args workaround.
+# Builds with a Go toolchain carrying Termux's standard-library patches.
 # Credits: Tailscale Team, asutorufa/tailscale, and Gemini CLI AI Agent.
 set -euo pipefail
 
@@ -42,6 +42,7 @@ PATCH_DIR="$WORKDIR/patches"
 OUT_DIR="$WORKDIR/bin"
 SRC_STAMP="$SRC_DIR/.ts_version"
 CHECKSUM_DIR="$WORKDIR/checksums"
+TERMUX_PREFIX="/data/data/com.termux/files/usr"
 
 # Determine target architecture(s)
 TARGET_ARCH="${1:-}"
@@ -121,9 +122,129 @@ if [ ! -d "$SRC_DIR" ]; then
     echo "$DOWNLOAD_VERSION" > "$SRC_STAMP"
 fi
 
+# 3.5 Prepare a patched Go toolchain
+#
+# Vanilla Go cannot produce a working Android binary for this project, and no
+# amount of patching tailscale fixes it, because both problems are in Go's own
+# standard library:
+#
+#   * net.Interfaces() fails with "netlinkrib: permission denied" -- Android 11+
+#     denies app UIDs bind(2) on netlink sockets -- so netmon.New errors out.
+#   * There is no /etc/resolv.conf on Android, so the pure resolver falls back
+#     to [::1]:53 and every lookup fails.
+#
+# Termux solves both in the Go it ships, and applies the same patches when
+# cross-compiling other packages. We vendor those patches (see patches/go/) and
+# do the same, which is why this project no longer carries netmon or DNS
+# patches of its own. Verified on Android 16 in a real untrusted_app context:
+# vanilla Go reproduces both failures, the patched toolchain reports 8
+# interfaces and resolves names.
+GO_VERSION="1.27.1"
+GO_SHA256="63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445"
+GOTOOLDIR="$WORKDIR/.gotoolchain"
+GOROOT_PATCHED="$GOTOOLDIR/go"
+GO_STAMP="$GOROOT_PATCHED/.termux-patched"
+
+setup_patched_go() {
+    if [ -f "$GO_STAMP" ] && [ "$(cat "$GO_STAMP")" = "$GO_VERSION" ]; then
+        echo "-> Patched Go $GO_VERSION already prepared."
+        return 0
+    fi
+
+    echo "-> Preparing patched Go $GO_VERSION toolchain..."
+    rm -rf "$GOTOOLDIR"
+    mkdir -p "$GOTOOLDIR"
+
+    local tarball="$GOTOOLDIR/go.tar.gz"
+    if ! wget -q -O "$tarball" "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"; then
+        echo "Error: could not download Go $GO_VERSION."
+        exit 1
+    fi
+    local actual
+    actual=$(sha256sum "$tarball" | cut -d' ' -f1)
+    if [ -n "$GO_SHA256" ] && [ "$actual" != "$GO_SHA256" ]; then
+        echo "Error: Go $GO_VERSION checksum mismatch."
+        echo "       expected: $GO_SHA256"
+        echo "       actual:   $actual"
+        exit 1
+    fi
+    tar -xzf "$tarball" -C "$GOTOOLDIR"
+    rm -f "$tarball"
+
+    # Termux's patches are gated on //go:build android and expect these copies
+    # to exist, exactly as packages/golang/patch-script/*.sh creates them.
+    ( cd "$GOROOT_PATCHED"
+      cp -T src/net/conf.go src/net/conf_android.go
+      cp -T src/net/dnsclient_unix.go src/net/dnsclient_android.go
+      cp -T src/syscall/netlink_linux.go src/syscall/netlink_android.go
+      cp -T src/net/interface_linux.go src/net/interface_android.go )
+
+    local d
+    for d in fix-hardcoded-etc-resolv-conf fix-android-netlink remove-pidfd remove-futex_time64; do
+        # Fatal on failure. These patches are sensitive to the Go version, and
+        # a silently unpatched toolchain produces a binary that looks fine and
+        # cannot resolve a name or list an interface on a phone.
+        if ! sed -e "s|@TERMUX_PREFIX@|$TERMUX_PREFIX|g" "$PATCH_DIR/go/$d.diff" \
+             | ( cd "$GOROOT_PATCHED" && patch --silent -p1 ); then
+            echo "Error: Go patch $d did not apply to go$GO_VERSION."
+            echo "       Refresh them with ./patches/go/refresh.sh, or pin a Go"
+            echo "       version they still match. Building without them yields"
+            echo "       a binary that cannot resolve names or list interfaces."
+            exit 1
+        fi
+    done
+
+    # Prove the two that matter actually landed.
+    grep -q "$TERMUX_PREFIX/etc/resolv.conf" "$GOROOT_PATCHED/src/net/dnsclient_android.go" \
+        || { echo "Error: resolv.conf patch did not take effect."; exit 1; }
+    grep -q 'EPERM' "$GOROOT_PATCHED/src/syscall/netlink_android.go" \
+        || { echo "Error: netlink patch did not take effect."; exit 1; }
+
+    echo "$GO_VERSION" > "$GO_STAMP"
+    echo "   done."
+}
+
+# On a phone, Termux's own Go already carries exactly these patches -- and a
+# linux-amd64 toolchain could not run there anyway.
+if [ "$(go env GOOS 2>/dev/null)" = "android" ]; then
+    ON_DEVICE=1
+    echo "-> Building on Android: using Termux's Go, which already carries these patches."
+else
+    ON_DEVICE=0
+    setup_patched_go
+    export GOROOT="$GOROOT_PATCHED"
+    export PATH="$GOROOT/bin:$PATH"
+fi
+# Without this, Go silently downloads and switches to the toolchain named in
+# tailscale's go.mod, discarding every patch above.
+export GOTOOLCHAIN=local
+echo "-> Building with $(go version)"
+
+# Locate the NDK C compiler for a target. Go refuses GOOS=android without
+# external (cgo) linking on every architecture except arm64, so the other three
+# cannot be cross-compiled without it.
+ndk_cc_for() {
+    local goarch="$1" triple=""
+    case "$goarch" in
+        arm64) triple="aarch64-linux-android" ;;
+        arm)   triple="armv7a-linux-androideabi" ;;
+        386)   triple="i686-linux-android" ;;
+        amd64) triple="x86_64-linux-android" ;;
+    esac
+    local ndk="${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_ROOT:-}}}"
+    if [ -z "$ndk" ] && [ -d "$HOME/android-sdk/ndk" ]; then
+        ndk=$(find "$HOME/android-sdk/ndk" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -n1)
+    fi
+    [ -n "$ndk" ] || return 1
+    # API 24 matches Termux's own minSdk.
+    local cc="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/${triple}24-clang"
+    [ -x "$cc" ] || return 1
+    printf '%s' "$cc"
+}
+
 # 4. Applying patches
-echo "[2/3] Applying netmon, argument and SOCKS5 auth patches..."
-cp "$PATCH_DIR/fix_android_netmon.go" "$SRC_DIR/cmd/tailscaled/"
+echo "[2/3] Applying hostinfo, argument and SOCKS5 auth patches..."
+cp "$PATCH_DIR/fix_hostinfo_android.go" "$SRC_DIR/cmd/tailscaled/"
 cp "$PATCH_DIR/fix_args_android.go" "$SRC_DIR/cmd/tailscaled/"
 cp "$PATCH_DIR/fix_args_android.go" "$SRC_DIR/cmd/tailscale/"
 cp "$PATCH_DIR/fix_socks5_auth.go" "$SRC_DIR/cmd/tailscaled/"
@@ -156,35 +277,7 @@ else
     exit 1
 fi
 
-# Make outbound name resolution honour the resolver the netmon patch installs.
-#
-# net/tsdial resolves names for SOCKS5 and the HTTP proxy through a zero-value
-# net.Resolver, not net.DefaultResolver -- so it reads /etc/resolv.conf, which
-# Termux does not have, and every hostname lookup through the proxy fails
-# while a connection to a literal IP works. Copy the two fields that matter
-# rather than the struct: net.Resolver embeds a mutex.
-echo "-> Pointing net/tsdial at the configured resolver..."
-TSDIAL_GO="$SRC_DIR/net/tsdial/tsdial.go"
-if grep -q "termux: use the configured resolver" "$TSDIAL_GO"; then
-    echo "   already wired, skipping."
-elif grep -q '^	var r net.Resolver$' "$TSDIAL_GO"; then
-    sed 's|^\tvar r net.Resolver$|\tvar r net.Resolver\n\t// termux: use the configured resolver; a zero net.Resolver reads\n\t// /etc/resolv.conf, which does not exist here.\n\tif dr := net.DefaultResolver; dr != nil {\n\t\tr.PreferGo = dr.PreferGo\n\t\tr.Dial = dr.Dial\n\t}|' \
-        "$TSDIAL_GO" > "$TSDIAL_GO.tmp" && mv "$TSDIAL_GO.tmp" "$TSDIAL_GO"
-    grep -q "termux: use the configured resolver" "$TSDIAL_GO" || { echo "Error: tsdial resolver injection did not take effect."; exit 1; }
-    echo "   done."
-else
-    echo "Error: could not find 'var r net.Resolver' in $TSDIAL_GO."
-    echo "       Upstream changed net/tsdial; update this patch step, or"
-    echo "       hostname resolution through the SOCKS5 proxy will fail."
-    exit 1
-fi
-
-# Apply DNS manager patch / modules sync
 cd "$SRC_DIR"
-
-# Ensure anet is available for the build
-go get github.com/wlynxg/anet@v0.0.5
-go mod tidy
 
 # 5. Compiling
 echo "[3/3] Compiling binaries..."
@@ -198,57 +291,41 @@ TAGS="ts_no_clipboard,ts_omit_taildrop,ts_omit_systray,ts_omit_kube,ts_omit_aws,
 # to notice.
 verify_patched() {
     local arch="$1" bin="$2" missing=""
-    grep -aq "\[Termux\]" "$bin" || missing="$missing netmon"
-    grep -aq "wlynxg/anet" "$bin" || missing="$missing anet"
+    # The resolv.conf path only appears if the Go toolchain carried Termux's
+    # patch, which is also what fixes net.Interfaces(). Checking the artifact
+    # matters more than checking the build: a toolchain patch that silently
+    # stopped applying produces a binary that looks fine and cannot resolve a
+    # name or see an interface on a phone.
+    grep -aq "$TERMUX_PREFIX/etc/resolv.conf" "$bin" || missing="$missing go-toolchain"
+    grep -aq "\[Termux\]" "$bin" || missing="$missing hostinfo"
     grep -aq "TS_SOCKS5_USER" "$bin" || missing="$missing socks5-auth"
     if [ -n "$missing" ]; then
         echo "Error: $arch/tailscaled is missing patches:$missing"
-        echo "       Refusing to publish an unpatched binary. Check the"
-        echo "       //go:build tags in patches/ against GOOS for this target."
+        echo "       Refusing to publish an unpatched binary."
         return 1
     fi
-    echo "-> $arch: netmon, anet and SOCKS5 auth patches verified in binary."
+    echo "-> $arch: Go toolchain, hostinfo and SOCKS5 auth patches verified in binary."
 }
 
-# Why the two build profiles below:
+# Every target is GOOS=android, which is what makes Termux's standard-library
+# patches (//go:build android) apply. -buildmode=pie throughout, because
+# Termux builds that target API 29+ launch binaries through /system/bin/linker,
+# which rejects ET_EXEC.
 #
-#   GOOS=android requires external (cgo) linking on every architecture except
-#   arm64 -- `go build` refuses outright with "android/amd64 requires external
-#   (cgo) linking". Cross-compiling those would mean shipping an Android NDK
-#   toolchain, so they are built as GOOS=linux instead.
-#
-#   That is only safe because the patches are tagged `android || linux`; when
-#   they were tagged `android` alone, these three architectures silently
-#   shipped without the netmon patch that is the whole point of this project.
-#   The verify_patched check below is what keeps that from happening again.
-#
-#   -buildmode=pie is likewise arm64-only. With CGO_ENABLED=0 a PIE build for
-#   linux/amd64 comes out as a dynamic ELF with .interp=/lib64/ld-linux-x86-64.so.2,
-#   a glibc loader Android does not have, so the binary cannot start at all.
-#   Without PIE the same build is a static executable that runs fine.
+# arm64 links internally and needs no C compiler; the other three do, so they
+# need the NDK. On a phone there is no cross-compiling and Termux's clang
+# serves as the C compiler.
 build_for_arch() {
     local arch="$1"
     local goarch=""
     local goarm=""
-    local goos="linux"
-    local build_mode_arg=""
+    local goos="android"
 
     case "$arch" in
-        aarch64)
-            goarch="arm64"
-            goos="android"
-            build_mode_arg="-buildmode=pie"
-            ;;
-        arm)
-            goarch="arm"
-            goarm="7"
-            ;;
-        i686)
-            goarch="386"
-            ;;
-        x86_64)
-            goarch="amd64"
-            ;;
+        aarch64) goarch="arm64" ;;
+        arm)     goarch="arm"; goarm="7" ;;
+        i686)    goarch="386" ;;
+        x86_64)  goarch="amd64" ;;
         *)
             echo "Error: Unknown target architecture '$arch'"
             return 1
@@ -261,18 +338,33 @@ build_for_arch() {
 
     export GOOS="$goos"
     export GOARCH="$goarch"
-    export CGO_ENABLED=0
     if [ -n "$goarm" ]; then
         export GOARM="$goarm"
     else
         unset GOARM
     fi
 
-    # Assemble build arguments
-    local build_args=("-trimpath" "-tags" "$TAGS" "-ldflags=-s -w -checklinkname=0")
-    if [ -n "$build_mode_arg" ]; then
-        build_args+=("$build_mode_arg")
+    if [ "$ON_DEVICE" = "1" ]; then
+        # Native build: Termux's clang is the C compiler, cgo on by default.
+        unset CC
+        export CGO_ENABLED=1
+    elif [ "$goarch" = "arm64" ]; then
+        export CGO_ENABLED=0
+        unset CC
+    else
+        local cc
+        if ! cc=$(ndk_cc_for "$goarch"); then
+            echo "Error: no Android NDK C compiler for $arch."
+            echo "       Go cannot cross-compile GOOS=android/$goarch without cgo."
+            echo "       Set ANDROID_NDK_HOME, or build this architecture on a device."
+            return 1
+        fi
+        export CC="$cc"
+        export CGO_ENABLED=1
     fi
+
+    # Assemble build arguments
+    local build_args=("-trimpath" "-tags" "$TAGS" "-ldflags=-s -w -checklinkname=0" "-buildmode=pie")
 
     # Compile tailscale CLI
     if [ -d "./cmd/scale" ]; then

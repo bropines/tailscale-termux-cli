@@ -20,3 +20,6 @@ EOF
 dist/
 *.deb
 
+
+# Patched Go toolchain (see patches/go/)
+.gotoolchain/

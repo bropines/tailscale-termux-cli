@@ -8,7 +8,9 @@ TERMUX_PKG_SRCURL=https://github.com/tailscale/tailscale/archive/refs/tags/v${TE
 TERMUX_PKG_SHA256=0e94d961c31ce7d33e8b7ce4ac6fdbec83ee5658784eed69eb7fce300729d717
 TERMUX_PKG_AUTO_UPDATE=true
 TERMUX_PKG_BUILD_IN_SRC=true
-TERMUX_PKG_DEPENDS="termux-services"
+# resolv-conf provides $PREFIX/etc/resolv.conf, which is where the Go
+# toolchain Termux ships looks for a resolver; without it nothing resolves.
+TERMUX_PKG_DEPENDS="termux-services, resolv-conf"
 # The out-of-tree build at github.com/bropines/tailscale-termux-cli installs
 # the same two binaries.
 TERMUX_PKG_CONFLICTS="tailscale-termux"
