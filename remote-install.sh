@@ -6,14 +6,41 @@ set -euo pipefail
 echo "Tailscale Termux Remote Installer"
 echo "=============================="
 
-# Termux ships both a dpkg-based and a pacman-based variant (issue #9).
-if command -v dpkg >/dev/null 2>&1; then
-    PKG_FORMAT="deb"
-elif command -v pacman >/dev/null 2>&1; then
-    PKG_FORMAT="pacman"
-else
-    echo "Error: neither dpkg nor pacman was found."
-    echo "       This does not look like a Termux environment."
+# Which Termux variant is this -- the dpkg one or the pacman one (issue #9)?
+#
+# NOT `command -v dpkg`: a pacman-based Termux can have dpkg installed as an
+# ordinary package, and answering "deb" there unpacks a .deb over a system
+# pacman owns, leaving a package that dpkg cannot configure because it sees
+# none of its dependencies. Termux itself knows the answer; ask it.
+detect_pkg_format() {
+    local m="${TERMUX_APP_PACKAGE_MANAGER:-}"
+    if [ -z "$m" ] && command -v termux-info >/dev/null 2>&1; then
+        m=$(termux-info 2>/dev/null | sed -n 's/^TERMUX_APP_PACKAGE_MANAGER=//p' | head -n1)
+    fi
+    case "$m" in
+        pacman) printf 'pacman'; return 0 ;;
+        apt|dpkg|debian) printf 'deb'; return 0 ;;
+    esac
+    # Older Termux exposes the package format rather than the manager.
+    case "${TERMUX_MAIN_PACKAGE_FORMAT:-}" in
+        pacman) printf 'pacman'; return 0 ;;
+        debian) printf 'deb'; return 0 ;;
+    esac
+    # Last resort. A pacman database that actually has packages in it is
+    # decisive; dpkg merely being present is not.
+    if command -v pacman >/dev/null 2>&1 && pacman -Qq >/dev/null 2>&1; then
+        printf 'pacman'; return 0
+    fi
+    if command -v dpkg >/dev/null 2>&1; then
+        printf 'deb'; return 0
+    fi
+    return 1
+}
+
+PKG_FORMAT=$(detect_pkg_format || true)
+if [ -z "$PKG_FORMAT" ]; then
+    echo "Error: could not tell whether this Termux uses dpkg or pacman."
+    echo "       Check: termux-info | grep TERMUX_APP_PACKAGE_MANAGER"
     exit 1
 fi
 echo "[*] Package manager: $PKG_FORMAT"
