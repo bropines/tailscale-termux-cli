@@ -1051,6 +1051,15 @@ working after this update, that is why.
   Show your credentials:   tailscale-socks5
   Copy a ready-made URL:   tailscale-socks5 --url
 
+DNS also moved. The daemon used to be hardwired to 8.8.8.8;
+it now uses the same resolver as the rest of your Termux:
+
+    $PREFIX/etc/resolv.conf
+
+Edit that file to change it. TS_SOCKS5-style TS_DNS_SERVER no
+longer does anything -- if you had it in ~/.tailscale/.env,
+move the address into resolv.conf instead.
+
 Also changed:
   * The manual `tailscaled-start` used to pick a random port
     each run; it now uses 127.0.0.1:1055, same as the service.
