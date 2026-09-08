@@ -892,22 +892,46 @@ fi
 # 4. The resolver the daemon was told to use, and whether it is reachable.
 #    This is the usual cause of `tailscale up` hanging forever: the shell
 #    resolves names through Android, the daemon does not.
-DNS_SRV="${TS_DNS_SERVER:-}"
-if [ -z "$DNS_SRV" ] && [ -f "$ENV_FILE" ]; then
-    DNS_SRV=$(sed -n 's/^[[:space:]]*TS_DNS_SERVER=//p' "$ENV_FILE" | tr -d '"' | head -1)
-fi
-[ -n "$DNS_SRV" ] || DNS_SRV="8.8.8.8"
-case "$DNS_SRV" in
-    system|default|off) note "Daemon resolver: system default" ;;
-    *)
-        DNS_HOST="${DNS_SRV%%:*}"
+# Ask the daemon what it actually chose, from the line it logs at startup.
+# Recomputing the default here would be wrong: with TS_DNS_SERVER unset the
+# daemon asks Android for its own resolver, so the answer depends on the
+# network the phone is on.
+DNS_LINE=""
+for _f in "$SVLOG_DIR/current" "$LOG_FILE"; do
+    [ -f "$_f" ] || continue
+    DNS_LINE=$(grep -a '\[Termux\] DNS resolver' "$_f" | tail -n1)
+    [ -n "$DNS_LINE" ] && break
+done
+case "$DNS_LINE" in
+    *"system default"*)
+        note "Daemon resolver: system default (Go's own)"
+        ;;
+    *"pinned to "*)
+        DNS_SRV=${DNS_LINE#*pinned to }
+        DNS_SRV=${DNS_SRV%% *}
+        # Strip the port, coping with [v6]:53 as well as v4:53.
+        DNS_HOST=${DNS_SRV%:*}
+        DNS_HOST=${DNS_HOST#[}
+        DNS_HOST=${DNS_HOST%]}
         if timeout 6 bash -c "cat < /dev/null > /dev/tcp/$DNS_HOST/53" 2>/dev/null; then
             ok "Daemon resolver $DNS_HOST reachable"
         else
             bad "Daemon resolver $DNS_HOST is not reachable"
-            hint "Some networks block public resolvers. Pick another one:"
-            hint "  echo 'TS_DNS_SERVER=1.1.1.1' >> $ENV_FILE && sv restart tailscaled"
+            case "$DNS_LINE" in
+                *fallback*)
+                    hint "That is the built-in fallback, and some networks block public"
+                    hint "resolvers. Point it at one that works here:"
+                    hint "  echo 'TS_DNS_SERVER=1.1.1.1' >> $ENV_FILE && sv restart tailscaled"
+                    ;;
+                *)
+                    hint "Set a different one:"
+                    hint "  echo 'TS_DNS_SERVER=1.1.1.1' >> $ENV_FILE && sv restart tailscaled"
+                    ;;
+            esac
         fi
+        ;;
+    "")
+        note "Daemon resolver: unknown (no startup line in the log yet)"
         ;;
 esac
 
