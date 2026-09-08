@@ -108,22 +108,73 @@ func detectIPv6Addr() net.IP {
 	return nil
 }
 
-// termuxDNSServer returns the resolver address tailscaled should dial, or ""
-// to keep Go's default resolver. Controlled by TS_DNS_SERVER: unset means
-// 8.8.8.8:53, "system"/"default"/"off" means no override, anything else is
-// used verbatim (a bare IP gets :53 appended).
-func termuxDNSServer() string {
+// termuxFallbackDNS is used only when the device will not tell us its own
+// resolver. Public resolvers are blocked on some networks and by some
+// carriers, which is why it is a last resort rather than the default.
+const termuxFallbackDNS = "8.8.8.8:53"
+
+// tailscaleCGNAT is the range Tailscale hands out to nodes (100.64.0.0/10,
+// which contains the 100.100.100.100 MagicDNS resolver). Android sets
+// net.dns1 to it while a Tailscale VPN profile is up; pointing the daemon's
+// own lookups back at Tailscale would be circular, so such a value is
+// rejected.
+var tailscaleCGNAT = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
+
+// androidPropDNS reads a resolver address from an Android system property and
+// returns it as host:port, or "" if it cannot be used.
+//
+// Everything about this is best-effort: it runs from init(), so it must never
+// block for long and never panic. "" is returned when getprop is absent or
+// fails, when the property is empty (net.dns1 is empty on many modern Android
+// versions), when the value is not an IP address at all, and when the address
+// is one we must not dial. getprop output is never passed on unvalidated.
+func androidPropDNS(prop string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "getprop", prop).Output()
+	if err != nil {
+		return ""
+	}
+	ip := net.ParseIP(strings.TrimSpace(string(out)))
+	if ip == nil || ip.IsLoopback() || ip.IsUnspecified() {
+		return ""
+	}
+	if ip4 := ip.To4(); ip4 != nil && tailscaleCGNAT.Contains(ip4) {
+		return ""
+	}
+	return net.JoinHostPort(ip.String(), "53")
+}
+
+// termuxDNSServer returns the resolver address tailscaled should dial, plus a
+// short description of where that answer came from for the startup log. An
+// empty address means keep Go's default resolver.
+//
+// Controlled by TS_DNS_SERVER: "system"/"default"/"off" means no override,
+// any other value is used verbatim (a bare IP gets :53 appended). Unset asks
+// Android for the resolver it is already using and falls back to
+// termuxFallbackDNS only if that yields nothing usable.
+func termuxDNSServer() (addr, source string) {
 	v := strings.TrimSpace(os.Getenv("TS_DNS_SERVER"))
 	switch strings.ToLower(v) {
 	case "":
-		return "8.8.8.8:53"
+		// Prefer the device's own resolver: it follows the network the
+		// phone is actually on, and it keeps working where a carrier or
+		// network blocks public resolvers -- a failure that otherwise
+		// shows up only as `tailscale up` hanging forever.
+		for _, prop := range []string{"net.dns1", "net.dns2"} {
+			if sysDNS := androidPropDNS(prop); sysDNS != "" {
+				return sysDNS, "system resolver, " + prop
+			}
+		}
+		return termuxFallbackDNS, "fallback, no system resolver reported"
 	case "system", "default", "off":
-		return ""
+		return "", "TS_DNS_SERVER=" + v
 	}
 	if _, _, err := net.SplitHostPort(v); err != nil {
-		return net.JoinHostPort(v, "53")
+		return net.JoinHostPort(v, "53"), "TS_DNS_SERVER"
 	}
-	return v
+	return v, "TS_DNS_SERVER"
 }
 
 func init() {
@@ -143,9 +194,11 @@ func init() {
 	// resolver, which reads /etc/resolv.conf — a file Termux does not have.
 	// Without this the daemon cannot resolve the control plane at all.
 	//
-	// Configurable via TS_DNS_SERVER in ~/.tailscale/.env; "system" keeps
-	// Go's default resolver. See README for the privacy trade-off.
-	if dns := termuxDNSServer(); dns != "" {
+	// With TS_DNS_SERVER unset this is the device's own resolver, and only
+	// 8.8.8.8:53 if Android would not name one. Configurable via
+	// TS_DNS_SERVER in ~/.tailscale/.env; "system" keeps Go's default
+	// resolver. See README for the trade-offs.
+	if dns, dnsSource := termuxDNSServer(); dns != "" {
 		net.DefaultResolver = &net.Resolver{
 			PreferGo: true,
 			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
@@ -159,9 +212,9 @@ func init() {
 				return d.DialContext(ctx, "udp", dns)
 			},
 		}
-		fmt.Printf("[Termux] DNS resolver pinned to %s\n", dns)
+		fmt.Printf("[Termux] DNS resolver pinned to %s (%s)\n", dns, dnsSource)
 	} else {
-		fmt.Printf("[Termux] DNS resolver: system default\n")
+		fmt.Printf("[Termux] DNS resolver: system default (%s)\n", dnsSource)
 	}
 
 	// 3. Register custom interface getter:
