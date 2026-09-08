@@ -160,7 +160,6 @@ Configure the daemon by creating/editing `~/.tailscale/.env`. It is read on **bo
 | `TS_SOCKS5_NO_AUTH` | proxy credentials | `1` disables proxy authentication (**not recommended**) |
 | `TS_HTTP_PROXY` | `--outbound-http-proxy-listen` | HTTP proxy address |
 | `TS_PORT` | `--port` | UDP port for WireGuard |
-| `TS_DNS_SERVER` | resolver | Resolver to use (default: the device's own, falling back to `8.8.8.8`); `system` keeps Go's default |
 | `TS_LOG_VERBOSITY` | log verbosity | `1`, `2`… (`TS_VERBOSE` is accepted as an alias) |
 | `TS_NO_LOGS_NO_SUPPORT` | log upload | `true` disables log upload to Tailscale (`TS_NO_LOGS` is an alias) |
 | `TS_EXTRA_ARGS` | (raw flags) | Additional raw flags to pass |
@@ -180,17 +179,21 @@ Changes apply on the next daemon restart (`sv restart tailscaled`, or `tailscale
 
 Worth knowing before you put this on a tailnet you do not own:
 
-* **DNS**: the binaries are built with `CGO_ENABLED=0`, so Go uses its pure-Go resolver, which wants `/etc/resolv.conf` — a file Termux does not have. The patch therefore installs a resolver itself. It first asks Android for the one the device is already using (`getprop net.dns1`, then `net.dns2`), so the daemon's lookups follow the network you are on; the value is only used if it parses as an IP address and is not loopback or inside Tailscale's own `100.64.0.0/10`. On many modern Android versions those properties are empty, and then it falls back to `8.8.8.8:53` — the daemon's lookups go to Google rather than your network's DNS. The daemon says which it picked at startup:
-
-  ```
-  [Termux] DNS resolver pinned to 192.168.1.1:53 (system resolver, net.dns1)
-  [Termux] DNS resolver pinned to 8.8.8.8:53 (fallback, no system resolver reported)
-  ```
-
-  Override either with `TS_DNS_SERVER`, or set `TS_DNS_SERVER=system` to opt out and leave Go's default resolver alone.
 * **Reported identity**: the daemon reports itself to the control plane as `App=tailscale-cli`, `DeviceModel=Termux`. This avoids mobile-specific client policies. Tailnet admins relying on client type for posture rules should know this node reports as a CLI client.
 
+That is the whole list. Interface discovery and DNS used to be patched here too; they are not any more — see below.
+
 ---
+
+## 🌐 How DNS works here
+
+Android has no `/etc/resolv.conf`, and Go's resolver reads exactly that file, so a stock Go binary resolves nothing on a phone. Termux solves this in the Go it ships, by pointing the resolver at `$PREFIX/etc/resolv.conf` instead — and this project builds with the same patch. So the daemon uses **the same resolver as the rest of your Termux**:
+
+```bash
+cat $PREFIX/etc/resolv.conf
+```
+
+To change it, edit that file (or `pkg install resolv-conf` if it is missing) and restart the daemon. There is no project-specific DNS setting any more, and nothing is hardcoded to a public resolver.
 
 ## 🏗️ Local Building
 
@@ -208,7 +211,7 @@ Two build-time guards worth knowing about:
 * **The binary is checked for the patches.** After every compile `build.sh` greps `tailscaled` for the netmon, `anet` and SOCKS5-auth markers and fails if any are missing. A `//go:build` tag that stops matching produces no warning anywhere, which is exactly how three architectures once shipped unpatched.
 
 > [!NOTE]
-> Only `aarch64` is built as `GOOS=android`; Go requires cgo/NDK external linking for every other Android architecture, so `arm`, `i686` and `x86_64` are built as static `GOOS=linux` binaries. The patches are tagged `android || linux` so they are present in all four.
+> All four architectures are built as `GOOS=android` with `-buildmode=pie`, using a Go toolchain patched with [Termux's own standard-library fixes](patches/go/) — which is what makes `net.Interfaces()` and DNS work on Android at all. Cross-compiling `arm`, `i686` and `x86_64` needs an Android NDK for the C compiler (Go refuses `GOOS=android` without cgo on those); `aarch64` does not. Building **on** a phone needs neither: Termux's own Go already carries the patches.
 
 ---
 
@@ -231,10 +234,10 @@ tailscaled-log
 <br>
 Almost always DNS. Termux has no <code>/etc/resolv.conf</code>, so the daemon pins a resolver of its own — the device's, if Android reports one, otherwise <code>8.8.8.8</code>, which some networks and providers block. Your shell resolves names through Android and works fine, which is why this is confusing.
 
-`tailscaled-log` shows which one this daemon chose; it is the `[Termux] DNS resolver` line printed at startup. `tailscale-test` then says whether a resolver is reachable (with `TS_DNS_SERVER` unset it checks the `8.8.8.8` fallback). If it is not, name one yourself:
+`tailscale-test` reports whether the resolver in `$PREFIX/etc/resolv.conf` is reachable. If it is not, point it somewhere that works:
 
 ```bash
-echo 'TS_DNS_SERVER=1.1.1.1' >> ~/.tailscale/.env
+echo 'nameserver 1.1.1.1' > $PREFIX/etc/resolv.conf
 sv restart tailscaled
 ```
 
