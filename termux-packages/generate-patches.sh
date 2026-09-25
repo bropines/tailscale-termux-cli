@@ -30,8 +30,9 @@ emit() {
     echo "  wrote $out ($(wc -l < "$src") lines)"
 }
 
-emit patches/fix_android_netmon.go cmd/tailscaled/fix_android_netmon.go 0001-add-android-netmon-patch.patch
-emit patches/fix_args_android.go   cmd/tailscaled/fix_args_android.go   0002-add-android-args-patch-tailscaled.patch
-emit patches/fix_args_android.go   cmd/tailscale/fix_args_android.go    0003-add-android-args-patch-tailscale.patch
+# Only the argv/socket patch: Termux's own Go carries the netmon and resolver
+# fixes, so a package built inside termux-packages needs neither from us.
+emit patches/fix_args_android.go cmd/tailscaled/fix_args_android.go 0001-add-android-args-patch-tailscaled.patch
+emit patches/fix_args_android.go cmd/tailscale/fix_args_android.go  0002-add-android-args-patch-tailscale.patch
 
 echo "Done. Verify with: patch -p1 --dry-run -d <tailscale-src> < $OUT/0001-*.patch"

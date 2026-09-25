@@ -72,5 +72,10 @@ jobs:
     permissions:
       contents: write
     uses: ./.github/workflows/build.yml
+    # Reusable workflows do not receive the caller's secrets unless told to.
+    # Without this the nightly path had no signing key, so the signing step
+    # took its "no key configured" branch, warned, and exited 0 -- releases
+    # went out unsigned while every job reported success.
+    secrets: inherit
     with:
       ts_version: ${{ needs.check-updates.outputs.tag }}

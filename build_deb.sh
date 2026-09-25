@@ -887,7 +887,9 @@ esac
 
 IP=$("${TS_BIN[@]}" ip -4 2>/dev/null | head -1 || true)
 if [ -n "$IP" ]; then
-    ok "Tailnet IP: $IP"
+    # Masked because this output is meant to be pasted into bug reports, and
+    # the first two octets already prove the node got a CGNAT address.
+    ok "Tailnet IP: $(printf '%s' "$IP" | sed -E 's/^([0-9]+\.[0-9]+)\..*/\1.x.x/')"
 fi
 
 # 4. The resolver the daemon was told to use, and whether it is reachable.
