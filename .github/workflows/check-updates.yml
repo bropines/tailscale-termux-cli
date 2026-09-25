@@ -3,7 +3,12 @@ name: Check for Tailscale Updates
 on:
   schedule:
     - cron: '0 0 * * *' # Every day at midnight
-  workflow_dispatch: # Manual trigger
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Rebuild and re-publish even if the version has not changed'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -51,6 +56,7 @@ jobs:
         env:
           UPSTREAM_TAG: ${{ steps.upstream.outputs.tag }}
           LOCAL_TAG: ${{ steps.local.outputs.tag }}
+          FORCE: ${{ inputs.force }}
         run: |
           set -euo pipefail
           # Releases here are tagged like "v1.100.0-10" (upstream version plus a
@@ -60,7 +66,10 @@ jobs:
           UP_NORM=$(normalize "$UPSTREAM_TAG")
           LOCAL_NORM=$(normalize "$LOCAL_TAG")
           echo "Comparing upstream '$UP_NORM' against local '$LOCAL_NORM'"
-          if [ "$UP_NORM" != "$LOCAL_NORM" ]; then
+          if [ "${FORCE:-false}" = "true" ]; then
+            echo "Forced rebuild requested; publishing regardless of version."
+            echo "new_version=true" >> "$GITHUB_OUTPUT"
+          elif [ "$UP_NORM" != "$LOCAL_NORM" ]; then
             echo "new_version=true" >> "$GITHUB_OUTPUT"
           else
             echo "new_version=false" >> "$GITHUB_OUTPUT"
