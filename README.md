@@ -4,6 +4,25 @@ This project provides a patched version of the official Tailscale CLI (`tailscal
 
 ---
 
+> [!IMPORTANT]
+> **Project status: this will most likely wind down.**
+>
+> Everything this project patches around is being fixed in Tailscale itself. Merged upstream and due in **1.103**:
+>
+> * [`feature/androidbin`](https://github.com/tailscale/tailscale/pull/21152) — `net.Interfaces()` and the TLS root store now work in raw binaries on Android, so `netmon` no longer fails.
+> * [`feature/androiddns`](https://github.com/tailscale/tailscale/pull/21139) — DNS goes through Android's own resolver (`dnsproxyd`), with no `/etc/resolv.conf` and no cgo required.
+> * [`paths`](https://github.com/tailscale/tailscale/pull/21168) — an absolute default socket path on Android, so the daemon and the CLI agree no matter where each was started. That one came from [an issue this project filed](https://github.com/tailscale/tailscale/issues/21161).
+>
+> Once 1.103 is out, a stock `GOOS=android` build of upstream Tailscale should run under Termux with none of our patches. What would still be missing is the authenticated SOCKS5 proxy and the packaging — so expect this repository to shrink to packaging, or be archived, rather than keep carrying patches.
+>
+> Until then the builds here remain the working option: the newest upstream *release* is still 1.102.x, which has none of it.
+
+### What about tailcat?
+
+[tailcat](https://github.com/tailscale/tailcat) gets asked about often enough ([#11](https://github.com/bropines/tailscale-termux-cli/issues/11)) to answer here: it does not need a project of its own. Its prebuilt binaries fail under Termux for exactly the reasons above — the first name lookup dies on `[::1]:53`. Built against a Go toolchain carrying Termux's standard-library patches it simply works; verified on Android 16, where it fetched its DERP map and handed out a tailcat address. After 1.103 the same should be true of stock upstream builds.
+
+---
+
 ## 🚀 Quick Start (Easiest Installation)
 
 Run this single command in Termux to download and install the latest package:
@@ -42,7 +61,7 @@ tailscale up
 
 ## ✨ Features & Patches
 
-1. **Netmon Bypass (Android 11+)**: Intercepts interface discovery (`anet` ioctl, `/proc/net/if_inet6`, `ifconfig` fallback) to bypass Android netlink restrictions.
+1. **Works at all on Android 11+**: interface discovery and DNS are handled by a Go toolchain carrying [Termux's standard-library patches](patches/go/), not by anything this project maintains. Stock Go fails both: `netlinkrib: permission denied` and `[::1]:53`.
 2. **Userspace Networking**: Runs without Root or `/dev/net/tun` out of the box.
 3. **Automatic Socket Resolution**: Both `tailscale` and `tailscale-cli` route requests to `~/.tailscale/tailscaled.sock` without a manual `--socket` flag.
 4. **Auto-Start Daemon**: The `tailscale-cli` wrapper starts `tailscaled` if it is not running. (The bare `tailscale` binary only gets the socket path filled in — start the daemon yourself, or use the service.)
