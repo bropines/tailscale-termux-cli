@@ -5,21 +5,24 @@ This project provides a patched version of the official Tailscale CLI (`tailscal
 ---
 
 > [!IMPORTANT]
-> **Project status: this will most likely wind down.**
+> **Project status: winding down.**
 >
-> Everything this project patches around is being fixed in Tailscale itself. Merged upstream and due in **1.103**:
+> Everything this project existed to patch around is now in Tailscale itself, as of **1.104.0** — the version this repository currently builds:
 >
-> * [`feature/androidbin`](https://github.com/tailscale/tailscale/pull/21152) — `net.Interfaces()` and the TLS root store now work in raw binaries on Android, so `netmon` no longer fails.
+> * [`feature/androidbin`](https://github.com/tailscale/tailscale/pull/21152) — `net.Interfaces()` and the TLS root store work in raw binaries on Android, so `netmon` no longer fails.
 > * [`feature/androiddns`](https://github.com/tailscale/tailscale/pull/21139) — DNS goes through Android's own resolver (`dnsproxyd`), with no `/etc/resolv.conf` and no cgo required.
 > * [`paths`](https://github.com/tailscale/tailscale/pull/21168) — an absolute default socket path on Android, so the daemon and the CLI agree no matter where each was started. That one came from [an issue this project filed](https://github.com/tailscale/tailscale/issues/21161).
 >
-> Once 1.103 is out, a stock `GOOS=android` build of upstream Tailscale should run under Termux with none of our patches. What would still be missing is the authenticated SOCKS5 proxy and the packaging — so expect this repository to shrink to packaging, or be archived, rather than keep carrying patches.
+> These builds still apply [Termux's Go standard-library patches](patches/go/) rather than relying on the upstream code, because the two take different approaches to interface discovery and the difference has not been measured yet on a device. That is the remaining open question; once it is settled this repository will either drop its patches and become packaging only, or be archived.
 >
-> Until then the builds here remain the working option: the newest upstream *release* is still 1.102.x, which has none of it.
+> What upstream still does not provide, and this project does:
+>
+> * an **authenticated** SOCKS5 proxy — upstream's `socks5.Server` has `Username`/`Password` fields that `cmd/tailscaled` never sets, so a plain `--socks5-server` is open to every app on the device;
+> * `.deb` and pacman packages, the `termux-services` integration, and the helper commands.
 
 ### What about tailcat?
 
-[tailcat](https://github.com/tailscale/tailcat) gets asked about often enough ([#11](https://github.com/bropines/tailscale-termux-cli/issues/11)) to answer here: it does not need a project of its own. Its prebuilt binaries fail under Termux for exactly the reasons above — the first name lookup dies on `[::1]:53`. Built against a Go toolchain carrying Termux's standard-library patches it simply works; verified on Android 16, where it fetched its DERP map and handed out a tailcat address. After 1.103 the same should be true of stock upstream builds.
+[tailcat](https://github.com/tailscale/tailcat) gets asked about often enough ([#11](https://github.com/bropines/tailscale-termux-cli/issues/11)) to answer here: it does not need a project of its own. Its older prebuilt binaries failed under Termux for exactly the reasons above — the first name lookup died on `[::1]:53` — but the fixes live in `tailscale.com`, which tailcat imports, so builds made against 1.104.0 or later get them for free.
 
 ---
 
