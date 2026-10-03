@@ -364,7 +364,10 @@ build_for_arch() {
     fi
 
     # Assemble build arguments
-    local build_args=("-trimpath" "-tags" "$TAGS" "-ldflags=-s -w -checklinkname=0" "-buildmode=pie")
+    # -checklinkname=0 used to be here for github.com/wlynxg/anet, which the
+    # old netmon patch imported. Nothing imports it any more, and a build with
+    # the check back on links fine, so the escape hatch is gone with it.
+    local build_args=("-trimpath" "-tags" "$TAGS" "-ldflags=-s -w" "-buildmode=pie")
 
     # Compile tailscale CLI
     if [ -d "./cmd/scale" ]; then

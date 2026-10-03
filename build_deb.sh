@@ -892,25 +892,65 @@ if [ -n "$IP" ]; then
     ok "Tailnet IP: $(printf '%s' "$IP" | sed -E 's/^([0-9]+\.[0-9]+)\..*/\1.x.x/')"
 fi
 
-# 4. The resolver the daemon was told to use, and whether it is reachable.
-#    This is the usual cause of `tailscale up` hanging forever: the shell
-#    resolves names through Android, the daemon does not.
-# The daemon resolves through $PREFIX/etc/resolv.conf: the Go toolchain it is
-# built with carries Termux's patch redirecting Go's hardcoded /etc/resolv.conf
-# there. So that file is the authority on which resolver it uses.
+# 4. How the daemon resolves names.
+#    Since Tailscale 1.104.0 the daemon talks to Android's own resolver daemon
+#    over the dnsproxyd socket (tailscale.com/feature/androiddns), which is the
+#    same path bionic's getaddrinfo takes -- so it gets the per-network DNS
+#    config and Private DNS for free, and $PREFIX/etc/resolv.conf is not
+#    consulted at all. That feature stands down if its socket is unavailable,
+#    and then Go's own resolver takes over and reads resolv.conf, because the
+#    toolchain carries Termux's patch redirecting Go's hardcoded
+#    /etc/resolv.conf there. So resolv.conf is the fallback, not the authority.
+# androiddns stands down if /etc/resolv.conf exists, if the platform is not
+# Android, or if the dnsproxyd socket does not answer. The first two are
+# knowable from here. The third is not: app UIDs cannot stat /dev/socket (test
+# -e returns false on a perfectly working device), even though connect(2) to
+# the socket inside it is allowed -- so do not pretend to probe it. A Running
+# backend is the real evidence that whichever path is in use works, because the
+# daemon had to resolve controlplane.tailscale.com to get there.
+# Strip any -devYYYYMMDD-t<hash> suffix: sort -V orders it below the release.
+DAEMON_VER=$("${TS_BIN[@]}" version 2>/dev/null | head -1 | sed 's/^v//; s/-.*//')
+ANDROID_DNS=unknown
+if [ -n "$DAEMON_VER" ]; then
+    if [ "$(printf '%s\n' 1.104.0 "$DAEMON_VER" | sort -V | head -1)" != 1.104.0 ]; then
+        ANDROID_DNS=old
+    elif [ -s /etc/resolv.conf ]; then
+        ANDROID_DNS=no
+    else
+        ANDROID_DNS=yes
+    fi
+fi
+case "$ANDROID_DNS" in
+    yes)
+        if [ "${STATE:-}" = Running ]; then
+            ok "DNS: Android's own resolver (dnsproxyd), and it works — Private DNS applies too"
+        else
+            note "DNS: Android's own resolver (dnsproxyd); nothing confirms it while the backend is not Running"
+        fi
+        ;;
+    no)  note "DNS: /etc/resolv.conf exists, so Go's own resolver is in use, not Android's" ;;
+    old) note "DNS: daemon is $DAEMON_VER, older than 1.104.0 — resolv.conf is the resolver" ;;
+    *)   note "DNS: could not ask the daemon its version, resolver path unknown" ;;
+esac
+
 RESOLV="${PREFIX:-/data/data/com.termux/files/usr}/etc/resolv.conf"
 if [ ! -r "$RESOLV" ]; then
-    bad "No $RESOLV — the daemon has no resolver and every lookup will fail"
-    hint "Install it: pkg install resolv-conf"
+    if [ "$ANDROID_DNS" = yes ]; then
+        note "No $RESOLV, which is fine while the system resolver answers"
+    else
+        bad "No $RESOLV and no system resolver — every lookup will fail"
+        hint "Install it: pkg install resolv-conf"
+    fi
 else
     DNS_HOST=$(sed -n 's/^[[:space:]]*nameserver[[:space:]]\+//p' "$RESOLV" | head -n1)
     if [ -z "$DNS_HOST" ]; then
-        bad "$RESOLV has no nameserver line"
+        note "$RESOLV has no nameserver line (only matters as a fallback)"
     elif timeout 6 bash -c "cat < /dev/null > /dev/tcp/$DNS_HOST/53" 2>/dev/null; then
-        ok "Resolver $DNS_HOST reachable (from $RESOLV)"
+        ok "Fallback resolver $DNS_HOST reachable (from $RESOLV)"
     else
-        bad "Resolver $DNS_HOST is not reachable (from $RESOLV)"
-        hint "Some networks block public resolvers. Point it at one that works:"
+        # Not fatal any more: it only bites if dnsproxyd stops answering.
+        note "Fallback resolver $DNS_HOST is not reachable (from $RESOLV)"
+        hint "Only matters if the system resolver stops answering. To change it:"
         hint "  echo 'nameserver 1.1.1.1' > $RESOLV && sv restart tailscaled"
     fi
 fi
@@ -1053,14 +1093,15 @@ working after this update, that is why.
   Show your credentials:   tailscale-socks5
   Copy a ready-made URL:   tailscale-socks5 --url
 
-DNS also moved. The daemon used to be hardwired to 8.8.8.8;
-it now uses the same resolver as the rest of your Termux:
+DNS also moved. The daemon used to be hardwired to 8.8.8.8.
+It now asks Android's own resolver daemon, the same one every
+app on this phone uses, so your network's DNS and your Private
+DNS setting both apply. $PREFIX/etc/resolv.conf is only the
+fallback if that is unavailable.
 
-    $PREFIX/etc/resolv.conf
-
-Edit that file to change it. TS_SOCKS5-style TS_DNS_SERVER no
-longer does anything -- if you had it in ~/.tailscale/.env,
-move the address into resolv.conf instead.
+TS_DNS_SERVER no longer does anything -- if you had it in
+~/.tailscale/.env, you can drop it. `tailscale-test` prints
+which resolver is actually in use.
 
 Also changed:
   * The manual `tailscaled-start` used to pick a random port

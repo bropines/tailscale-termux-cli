@@ -3,13 +3,15 @@ TERMUX_PKG_DESCRIPTION="Mesh VPN that makes it easy to connect your devices, whe
 TERMUX_PKG_LICENSE="BSD 3-Clause"
 TERMUX_PKG_LICENSE_FILE="LICENSE"
 TERMUX_PKG_MAINTAINER="@bropines"
-TERMUX_PKG_VERSION="1.102.3"
+TERMUX_PKG_VERSION="1.104.0"
 TERMUX_PKG_SRCURL=https://github.com/tailscale/tailscale/archive/refs/tags/v${TERMUX_PKG_VERSION}.tar.gz
-TERMUX_PKG_SHA256=0e94d961c31ce7d33e8b7ce4ac6fdbec83ee5658784eed69eb7fce300729d717
+TERMUX_PKG_SHA256=d5ef52c6561de4a9ab671964976e205859250627817f65a9c1f9245b409efa95
 TERMUX_PKG_AUTO_UPDATE=true
 TERMUX_PKG_BUILD_IN_SRC=true
-# resolv-conf provides $PREFIX/etc/resolv.conf, which is where the Go
-# toolchain Termux ships looks for a resolver; without it nothing resolves.
+# Tailscale 1.104.0 resolves through Android's own resolver daemon
+# (feature/androiddns), so resolv-conf is no longer what makes DNS work. It is
+# still the fallback the Go toolchain uses if that daemon's socket does not
+# answer, and it costs nothing, so keep it.
 TERMUX_PKG_DEPENDS="termux-services, resolv-conf"
 # The out-of-tree build at github.com/bropines/tailscale-termux-cli installs
 # the same two binaries.
@@ -41,19 +43,19 @@ termux_step_make() {
 		unset GOARM
 	fi
 
-	# Interface discovery on Android 11+ cannot use netlink; wlynxg/anet reads
-	# the interface list through ioctl instead. See the netmon patch.
-	go get github.com/wlynxg/anet@v0.0.5
-	go mod tidy
+	# Nothing is added to go.mod: interface discovery comes from the Go
+	# toolchain Termux ships, which carries the netlink and resolv.conf
+	# patches, and name resolution from Tailscale's own feature/androiddns.
+	# Earlier revisions of this recipe pulled in github.com/wlynxg/anet for
+	# the first of those; it is not needed and neither is the
+	# -checklinkname=0 it required.
 
 	# Subsystems that cannot work, or make no sense, on a phone.
 	local _TAGS="ts_no_clipboard,ts_omit_taildrop,ts_omit_systray,ts_omit_kube"
 	_TAGS+=",ts_omit_aws,ts_omit_bird,ts_omit_desktop_sessions"
 	_TAGS+=",ts_omit_networkmanager,ts_omit_sdnotify,ts_omit_ssh"
 
-	# -checklinkname=0 is required by wlynxg/anet on Go 1.23 and later:
-	# https://github.com/wlynxg/anet?tab=readme-ov-file#how-to-build-with-go-1230-or-later
-	local _LDFLAGS="-s -w -checklinkname=0"
+	local _LDFLAGS="-s -w"
 
 	go build -trimpath -tags "$_TAGS" -ldflags "$_LDFLAGS" -buildmode=pie -o tailscaled ./cmd/tailscaled
 	go build -trimpath -tags "$_TAGS" -ldflags "$_LDFLAGS" -buildmode=pie -o tailscale ./cmd/tailscale
