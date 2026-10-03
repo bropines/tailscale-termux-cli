@@ -897,28 +897,38 @@ fi
 #    over the dnsproxyd socket (tailscale.com/feature/androiddns), which is the
 #    same path bionic's getaddrinfo takes -- so it gets the per-network DNS
 #    config and Private DNS for free, and $PREFIX/etc/resolv.conf is not
-#    consulted at all. That feature stands down if the socket is unavailable,
+#    consulted at all. That feature stands down if its socket is unavailable,
 #    and then Go's own resolver takes over and reads resolv.conf, because the
 #    toolchain carries Termux's patch redirecting Go's hardcoded
 #    /etc/resolv.conf there. So resolv.conf is the fallback, not the authority.
 # androiddns stands down if /etc/resolv.conf exists, if the platform is not
-# Android, or if the dnsproxyd socket does not answer. A shell cannot connect to
-# a unix socket to test the last one, so the socket node's presence stands in.
+# Android, or if the dnsproxyd socket does not answer. The first two are
+# knowable from here. The third is not: app UIDs cannot stat /dev/socket (test
+# -e returns false on a perfectly working device), even though connect(2) to
+# the socket inside it is allowed -- so do not pretend to probe it. A Running
+# backend is the real evidence that whichever path is in use works, because the
+# daemon had to resolve controlplane.tailscale.com to get there.
 # Strip any -devYYYYMMDD-t<hash> suffix: sort -V orders it below the release.
 DAEMON_VER=$("${TS_BIN[@]}" version 2>/dev/null | head -1 | sed 's/^v//; s/-.*//')
 ANDROID_DNS=unknown
 if [ -n "$DAEMON_VER" ]; then
     if [ "$(printf '%s\n' 1.104.0 "$DAEMON_VER" | sort -V | head -1)" != 1.104.0 ]; then
         ANDROID_DNS=old
-    elif [ -s /etc/resolv.conf ] || [ ! -e /dev/socket/dnsproxyd ]; then
+    elif [ -s /etc/resolv.conf ]; then
         ANDROID_DNS=no
     else
         ANDROID_DNS=yes
     fi
 fi
 case "$ANDROID_DNS" in
-    yes) ok "DNS: Android's own resolver (dnsproxyd) — Private DNS applies too" ;;
-    no)  note "DNS: no dnsproxyd socket, so Go's resolver and resolv.conf are in use" ;;
+    yes)
+        if [ "${STATE:-}" = Running ]; then
+            ok "DNS: Android's own resolver (dnsproxyd), and it works — Private DNS applies too"
+        else
+            note "DNS: Android's own resolver (dnsproxyd); nothing confirms it while the backend is not Running"
+        fi
+        ;;
+    no)  note "DNS: /etc/resolv.conf exists, so Go's own resolver is in use, not Android's" ;;
     old) note "DNS: daemon is $DAEMON_VER, older than 1.104.0 — resolv.conf is the resolver" ;;
     *)   note "DNS: could not ask the daemon its version, resolver path unknown" ;;
 esac
