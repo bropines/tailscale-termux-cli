@@ -45,7 +45,7 @@ pacman-key --lsign-key 2D5133D5E2C7C8E7BE2D0CBB6EAA7CF6CEFB203E
 Then:
 
 ```bash
-pacman -U https://github.com/bropines/tailscale-termux-cli/releases/latest/download/tailscale-termux-1.102.3.4-1-aarch64.pkg.tar.xz
+pacman -U https://github.com/bropines/tailscale-termux-cli/releases/latest/download/tailscale-termux-1.104.0.1-1-aarch64.pkg.tar.xz
 ```
 
 The key is `2D5133D5E2C7C8E7BE2D0CBB6EAA7CF6CEFB203E`, published at [`keys/tailscale-termux-cli.asc`](keys/tailscale-termux-cli.asc) and attached to every release. If you have it in your ordinary GPG keyring, the one-line installer verifies the signature as well as the checksum.
