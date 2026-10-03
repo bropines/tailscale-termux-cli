@@ -55,3 +55,7 @@ actually has.
   `/proc/net/if_inet6` reading and UDPv6 probing. Replaced by the toolchain
   patches, which also see cellular interfaces and global IPv6 that it missed.
 * **The DNS default** — the daemon used to be started with `--dns=8.8.8.8`.
+* **`github.com/wlynxg/anet` and `-ldflags=-checklinkname=0`** — the old netmon
+  patch imported `anet`, which needs `//go:linkname` into the standard library
+  and so needed the link-name check disabled. Nothing imports it now, and an
+  `arm64` build with the check back on links clean, so both are gone.

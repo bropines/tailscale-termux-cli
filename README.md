@@ -237,7 +237,7 @@ If you have Go installed in Termux, you can build from source:
 Two build-time guards worth knowing about:
 
 * **The upstream tarball is checksummed.** `checksums/<version>.sha256` pins the SHA-256 of Tailscale's source archive, verified before anything is unpacked, compiled or run. A version with no pin yet is recorded and reported so you can commit it; set `TS_REQUIRE_CHECKSUM=1` to make an unpinned version a hard failure instead.
-* **The binary is checked for the patches.** After every compile `build.sh` greps `tailscaled` for the netmon, `anet` and SOCKS5-auth markers and fails if any are missing. A `//go:build` tag that stops matching produces no warning anywhere, which is exactly how three architectures once shipped unpatched.
+* **The binary is checked for the patches.** After every compile `build.sh` greps `tailscaled` for three markers — the Termux resolv.conf path, which only appears if the Go toolchain carried the patches, plus the hostinfo and SOCKS5-auth ones — and fails if any is missing. A `//go:build` tag that stops matching produces no warning anywhere, which is exactly how three architectures once shipped unpatched.
 
 > [!NOTE]
 > All four architectures are built as `GOOS=android` with `-buildmode=pie`, using a Go toolchain patched with [Termux's own standard-library fixes](patches/go/) — which is what makes `net.Interfaces()` and DNS work on Android at all. Cross-compiling `arm`, `i686` and `x86_64` needs an Android NDK for the C compiler (Go refuses `GOOS=android` without cgo on those); `aarch64` does not. Building **on** a phone needs neither: Termux's own Go already carries the patches.
@@ -261,16 +261,20 @@ tailscaled-log
 <details>
 <summary><b>1. <code>tailscale up</code> hangs forever and status says "Logged out."</b></summary>
 <br>
-Almost always DNS. Termux has no <code>/etc/resolv.conf</code>, so the daemon pins a resolver of its own — the device's, if Android reports one, otherwise <code>8.8.8.8</code>, which some networks and providers block. Your shell resolves names through Android and works fine, which is why this is confusing.
+It used to be DNS almost every time: the daemon was pinned to <code>8.8.8.8</code>, which some networks and providers block, while your shell resolved names through Android and worked fine. That is gone — since 1.104.0 the daemon uses Android's resolver too, so if you are on an older package, update first:
 
-`tailscale-test` reports whether the resolver in `$PREFIX/etc/resolv.conf` is reachable. If it is not, point it somewhere that works:
+```bash
+tailscale-update
+```
+
+Then run `tailscale-test`. It says which resolver the daemon is actually using. If it reports falling back to `$PREFIX/etc/resolv.conf` and that resolver is unreachable, point it somewhere that works:
 
 ```bash
 echo 'nameserver 1.1.1.1' > $PREFIX/etc/resolv.conf
 sv restart tailscaled
 ```
 
-Any resolver works, including one on your own network.
+If DNS is fine and `up` still hangs, `tailscaled-log` is the next thing to read — and worth pasting into an issue.
 </details>
 
 <details>
