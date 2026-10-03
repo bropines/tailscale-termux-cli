@@ -172,10 +172,27 @@ jobs:
         with:
           tag_name: ${{ inputs.ts_version || github.event.inputs.ts_version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
           files: release_assets/*
+          # Keep this factual: it is the first thing anyone sees on a release
+          # page. It claimed a "Netmon Patch (ifconfig parser)" long after that
+          # patch was deleted.
           body: |
-            Patched Tailscale binaries and .deb packages for Termux (Android 11+).
-            Based on Tailscale ${{ inputs.ts_version || github.event.inputs.ts_version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}.
-            Featuring Netmon Patch (ifconfig parser), auto-socket resolution, and daemon auto-start helper.
+            Tailscale for Termux on Android 11+, as `.deb` and pacman packages for
+            `aarch64`, `arm`, `i686` and `x86_64`, plus the loose binaries.
+
+            Built from Tailscale ${{ inputs.ts_version || github.event.inputs.ts_version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }} with a Go toolchain carrying
+            [Termux's standard-library patches](https://github.com/bropines/tailscale-termux-cli/tree/main/patches/go),
+            which is what enumerates the real interface list on a phone. Adds an
+            authenticated SOCKS5 proxy, `termux-services` integration, automatic
+            socket resolution and the helper commands.
+
+            Install or upgrade with the one-liner, which picks the right package
+            for your Termux and verifies it:
+
+            ```
+            curl -fsSL https://raw.githubusercontent.com/bropines/tailscale-termux-cli/main/remote-install.sh | bash
+            ```
+
+            pacman packages are signed; `SHA256SUMS` covers every asset.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

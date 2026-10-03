@@ -42,11 +42,25 @@ curl -fsSL https://raw.githubusercontent.com/bropines/tailscale-termux-cli/main/
 pacman-key --lsign-key 2D5133D5E2C7C8E7BE2D0CBB6EAA7CF6CEFB203E
 ```
 
-Then:
+Then ask the release which packages it has, and feed `pacman` the one for your
+architecture:
 
 ```bash
-pacman -U https://github.com/bropines/tailscale-termux-cli/releases/latest/download/tailscale-termux-1.104.0.1-1-aarch64.pkg.tar.xz
+curl -fsSL https://api.github.com/repos/bropines/tailscale-termux-cli/releases/latest | grep -o 'https://[^"]*\.pkg\.tar\.xz"' | tr -d '"'
 ```
+
+It prints four URLs, one per architecture. (The trailing `"` in the pattern is
+not decoration: without it the same match is found inside each `.sig` asset's
+URL and every line comes out twice.)
+
+```bash
+pacman -U <the aarch64 / arm / i686 / x86_64 URL that command printed>
+```
+
+No version is written down here on purpose. A `latest/download/<name>` link needs
+the filename to match the current release exactly, so a documented one goes stale
+at the next release and 404s for whoever copies it — which has happened here
+already. Asking the API costs one line and cannot go out of date.
 
 The key is `2D5133D5E2C7C8E7BE2D0CBB6EAA7CF6CEFB203E`, published at [`keys/tailscale-termux-cli.asc`](keys/tailscale-termux-cli.asc) and attached to every release. If you have it in your ordinary GPG keyring, the one-line installer verifies the signature as well as the checksum.
 
