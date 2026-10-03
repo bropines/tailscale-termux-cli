@@ -5,24 +5,21 @@ This project provides a patched version of the official Tailscale CLI (`tailscal
 ---
 
 > [!IMPORTANT]
-> **Project status: winding down.**
+> **Tailscale supports Termux itself now.** As of **1.104.0** an official `tailscaled` runs on a phone with no patches at all, and these three features are on by default in every Linux and Android build:
 >
-> Everything this project existed to patch around is now in Tailscale itself, as of **1.104.0** — the version this repository currently builds:
+> * [`feature/androidbin`](https://github.com/tailscale/tailscale/pull/21152) — `netmon` no longer dies when `net.Interfaces()` fails under the app sandbox, and Go's TLS roots are pointed at Android's certificate store. (Omit with `ts_omit_androidbin`.)
+> * [`feature/androiddns`](https://github.com/tailscale/tailscale/pull/21139) — names resolve through Android's own resolver (`dnsproxyd`), with no `/etc/resolv.conf` and no cgo.
+> * [`paths`](https://github.com/tailscale/tailscale/pull/21168) — an absolute default socket path on Android (`$TMPDIR/tailscaled.sock`), so the daemon and the CLI agree no matter where each was started. That one came from [an issue this project filed](https://github.com/tailscale/tailscale/issues/21161).
 >
-> * [`feature/androidbin`](https://github.com/tailscale/tailscale/pull/21152) — `net.Interfaces()` and the TLS root store work in raw binaries on Android, so `netmon` no longer fails.
-> * [`feature/androiddns`](https://github.com/tailscale/tailscale/pull/21139) — DNS goes through Android's own resolver (`dnsproxyd`), with no `/etc/resolv.conf` and no cgo required.
-> * [`paths`](https://github.com/tailscale/tailscale/pull/21168) — an absolute default socket path on Android, so the daemon and the CLI agree no matter where each was started. That one came from [an issue this project filed](https://github.com/tailscale/tailscale/issues/21161).
+> The same goes for [tailcat](https://github.com/tailscale/tailcat), which gets asked about here often enough ([#11](https://github.com/bropines/tailscale-termux-cli/issues/11)) to answer in the README: it imports `tailscale.com`, so a build against 1.104.0 or later picks all three up for free. It does not need a project of its own.
 >
-> These builds still apply [Termux's Go standard-library patches](patches/go/) rather than relying on the upstream code, because the two take different approaches to interface discovery and the difference has not been measured yet on a device. That is the remaining open question; once it is settled this repository will either drop its patches and become packaging only, or be archived.
+> **So this one is on its way out.** What is left that upstream does not do:
 >
-> What upstream still does not provide, and this project does:
+> * **It finds every interface, not just one.** `androidbin` discovers addresses by opening an outbound UDP socket and reading back the source address the kernel picked — one address per family, from the default route only. The [Termux Go patches](patches/go/) this project builds with enumerate the real interface list instead. Measured on a device, same version, same minute: upstream saw one synthetic interface, this build saw five and a global IPv6. [The numbers and the caveats](patches/go/README.md#what-this-is-actually-worth) are written down.
+> * **The SOCKS5 proxy asks for a password.** `socks5.Server` has `Username`/`Password` fields that `cmd/tailscaled` never sets, so a plain upstream `--socks5-server` is open to every app on the device. See [below](#-the-socks5-proxy-read-this-once).
+> * **Packaging**: `.deb` and pacman packages, the `termux-services` integration, the helper commands.
 >
-> * an **authenticated** SOCKS5 proxy — upstream's `socks5.Server` has `Username`/`Password` fields that `cmd/tailscaled` never sets, so a plain `--socks5-server` is open to every app on the device;
-> * `.deb` and pacman packages, the `termux-services` integration, and the helper commands.
-
-### What about tailcat?
-
-[tailcat](https://github.com/tailscale/tailcat) gets asked about often enough ([#11](https://github.com/bropines/tailscale-termux-cli/issues/11)) to answer here: it does not need a project of its own. Its older prebuilt binaries failed under Termux for exactly the reasons above — the first name lookup died on `[::1]:53` — but the fixes live in `tailscale.com`, which tailcat imports, so builds made against 1.104.0 or later get them for free.
+> The first of those is the only real reason to keep patching, and it is a patch to *Go*, not to Tailscale. Once upstream enumerates interfaces properly — or Termux's own `tailscale` package lands — this repository becomes packaging only, and then an archive.
 
 ---
 
@@ -64,7 +61,7 @@ tailscale up
 
 ## ✨ Features & Patches
 
-1. **Works at all on Android 11+**: interface discovery and DNS are handled by a Go toolchain carrying [Termux's standard-library patches](patches/go/), not by anything this project maintains. Stock Go fails both: `netlinkrib: permission denied` and `[::1]:53`.
+1. **Works at all on Android 11+**: as of 1.104.0 Tailscale handles this itself — `feature/androiddns` resolves names through Android's resolver daemon, and `feature/androidbin` keeps `netmon` alive when `net.Interfaces()` is denied. This build additionally uses a Go toolchain carrying [Termux's standard-library patches](patches/go/), which enumerate the real interface list instead of the single synthetic one upstream falls back to.
 2. **Userspace Networking**: Runs without Root or `/dev/net/tun` out of the box.
 3. **Automatic Socket Resolution**: Both `tailscale` and `tailscale-cli` route requests to `~/.tailscale/tailscaled.sock` without a manual `--socket` flag.
 4. **Auto-Start Daemon**: The `tailscale-cli` wrapper starts `tailscaled` if it is not running. (The bare `tailscale` binary only gets the socket path filled in — start the daemon yourself, or use the service.)
@@ -203,19 +200,29 @@ Worth knowing before you put this on a tailnet you do not own:
 
 * **Reported identity**: the daemon reports itself to the control plane as `App=tailscale-cli`, `DeviceModel=Termux`. This avoids mobile-specific client policies. Tailnet admins relying on client type for posture rules should know this node reports as a CLI client.
 
-That is the whole list. Interface discovery and DNS used to be patched here too; they are not any more — see below.
+That is the whole list. Interface discovery and DNS used to be patched here too; they are not any more. DNS is Tailscale's own `feature/androiddns` as of 1.104.0, and interface discovery comes from the [Go toolchain patches](patches/go/) rather than from any change to Tailscale's code.
+
+A patch-by-patch inventory, including what stopped being needed in 1.104.0 and what is kept only as a fallback, is in [`patches/README.md`](patches/README.md).
 
 ---
 
 ## 🌐 How DNS works here
 
-Android has no `/etc/resolv.conf`, and Go's resolver reads exactly that file, so a stock Go binary resolves nothing on a phone. Termux solves this in the Go it ships, by pointing the resolver at `$PREFIX/etc/resolv.conf` instead — and this project builds with the same patch. So the daemon uses **the same resolver as the rest of your Termux**:
+**Android's own resolver does it.** Since Tailscale 1.104.0 the daemon speaks the `dnsproxyd` protocol to the system resolver daemon directly — the same socket bionic's `getaddrinfo` uses — so it inherits the per-network DNS configuration and your **Private DNS (DoT/DoH)** setting for free. Nothing is hardcoded to a public resolver, and there is no project-specific DNS setting.
+
+That path stands down if the socket does not answer. Then Go's own resolver takes over, and it reads
 
 ```bash
 cat $PREFIX/etc/resolv.conf
 ```
 
-To change it, edit that file (or `pkg install resolv-conf` if it is missing) and restart the daemon. There is no project-specific DNS setting any more, and nothing is hardcoded to a public resolver.
+because the toolchain carries [Termux's patch](patches/go/) pointing Go's hardcoded `/etc/resolv.conf` there. So that file is the **fallback**, not the authority — editing it changes nothing while the system resolver is answering. `tailscale-test` prints which of the two is in use.
+
+If names do not resolve, that is worth checking first:
+
+```bash
+tailscale-test
+```
 
 ## 🏗️ Local Building
 
