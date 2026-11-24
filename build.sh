@@ -139,37 +139,57 @@ fi
 # patches of its own. Verified on Android 16 in a real untrusted_app context:
 # vanilla Go reproduces both failures, the patched toolchain reports 8
 # interfaces and resolves names.
-GO_VERSION="1.27.1"
-GO_SHA256="63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445"
+# Which Go: whatever tailscale's go.mod asks for, never a number written here.
+# It used to be pinned, and the nightly broke for a month the day tailscale
+# v1.106.0 raised its requirement from go 1.27.1 to 1.27.4 -- GOTOOLCHAIN=local
+# (below) correctly refuses to build with an older Go than go.mod demands, so a
+# pin is guaranteed to rot at the next upstream bump. Override with GO_VERSION
+# only to test a specific toolchain.
+required_go_version() {
+    local mod="$SRC_DIR/go.mod" v t
+    v=$(sed -n 's/^go \([0-9][0-9.]*\)[[:space:]]*$/\1/p' "$mod" | head -n1)
+    t=$(sed -n 's/^toolchain go\([0-9][0-9.]*\)[[:space:]]*$/\1/p' "$mod" | head -n1)
+    if [ -n "$t" ] && [ "$(printf '%s\n%s\n' "$v" "$t" | sort -V | tail -n1)" = "$t" ]; then
+        v="$t"
+    fi
+    # "go 1.27" names a language version; the first release of it is 1.27.0.
+    case "$v" in
+        *.*.*) ;;
+        *.*) v="$v.0" ;;
+    esac
+    printf '%s' "$v"
+}
+GO_VERSION="${GO_VERSION:-$(required_go_version)}"
+if [ -z "$GO_VERSION" ]; then
+    echo "Error: could not read the required Go version from $SRC_DIR/go.mod."
+    exit 1
+fi
 GOTOOLDIR="$WORKDIR/.gotoolchain"
 GOROOT_PATCHED="$GOTOOLDIR/go"
 GO_STAMP="$GOROOT_PATCHED/.termux-patched"
+GO_PATCHES="fix-hardcoded-etc-resolv-conf fix-android-netlink remove-pidfd remove-futex_time64"
+TERMUX_PATCH_URL="https://raw.githubusercontent.com/termux/termux-packages/master/packages/golang/patch-script"
 
-setup_patched_go() {
-    if [ -f "$GO_STAMP" ] && [ "$(cat "$GO_STAMP")" = "$GO_VERSION" ]; then
-        echo "-> Patched Go $GO_VERSION already prepared."
-        return 0
-    fi
+# The checksum comes from go.dev's own release index, which is where the
+# tarball comes from too. That guards against a corrupt or truncated download,
+# not against go.dev itself -- which is the trust root for Go either way.
+go_tarball_sha256() {
+    curl -fsSL 'https://go.dev/dl/?mode=json&include=all' | python3 -c '
+import json, sys
+want = sys.argv[1]
+for rel in json.load(sys.stdin):
+    for f in rel.get("files", []):
+        if f.get("filename") == want:
+            print(f["sha256"]); sys.exit(0)
+sys.exit(1)' "go${GO_VERSION}.linux-amd64.tar.gz"
+}
 
-    echo "-> Preparing patched Go $GO_VERSION toolchain..."
-    rm -rf "$GOTOOLDIR"
-    mkdir -p "$GOTOOLDIR"
-
-    local tarball="$GOTOOLDIR/go.tar.gz"
-    if ! wget -q -O "$tarball" "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"; then
-        echo "Error: could not download Go $GO_VERSION."
-        exit 1
-    fi
-    local actual
-    actual=$(sha256sum "$tarball" | cut -d' ' -f1)
-    if [ -n "$GO_SHA256" ] && [ "$actual" != "$GO_SHA256" ]; then
-        echo "Error: Go $GO_VERSION checksum mismatch."
-        echo "       expected: $GO_SHA256"
-        echo "       actual:   $actual"
-        exit 1
-    fi
+# Unpack a fresh GOROOT and apply the patches found in $1. Returns non-zero,
+# leaving no half-patched toolchain behind, if any of them does not apply.
+patch_go_from() {
+    local dir="$1" tarball="$2" d
+    rm -rf "$GOROOT_PATCHED"
     tar -xzf "$tarball" -C "$GOTOOLDIR"
-    rm -f "$tarball"
 
     # Termux's patches are gated on //go:build android and expect these copies
     # to exist, exactly as packages/golang/patch-script/*.sh creates them.
@@ -179,26 +199,74 @@ setup_patched_go() {
       cp -T src/syscall/netlink_linux.go src/syscall/netlink_android.go
       cp -T src/net/interface_linux.go src/net/interface_android.go )
 
-    local d
-    for d in fix-hardcoded-etc-resolv-conf fix-android-netlink remove-pidfd remove-futex_time64; do
-        # Fatal on failure. These patches are sensitive to the Go version, and
-        # a silently unpatched toolchain produces a binary that looks fine and
-        # cannot resolve a name or list an interface on a phone.
-        if ! sed -e "s|@TERMUX_PREFIX@|$TERMUX_PREFIX|g" "$PATCH_DIR/go/$d.diff" \
-             | ( cd "$GOROOT_PATCHED" && patch --silent -p1 ); then
-            echo "Error: Go patch $d did not apply to go$GO_VERSION."
-            echo "       Refresh them with ./patches/go/refresh.sh, or pin a Go"
-            echo "       version they still match. Building without them yields"
-            echo "       a binary that cannot resolve names or list interfaces."
-            exit 1
+    for d in $GO_PATCHES; do
+        if ! sed -e "s|@TERMUX_PREFIX@|$TERMUX_PREFIX|g" "$dir/$d.diff" \
+             | ( cd "$GOROOT_PATCHED" && patch --silent --forward -p1 ) >/dev/null; then
+            echo "   $d.diff does not apply to go$GO_VERSION"
+            rm -rf "$GOROOT_PATCHED"
+            return 1
         fi
     done
 
     # Prove the two that matter actually landed.
     grep -q "$TERMUX_PREFIX/etc/resolv.conf" "$GOROOT_PATCHED/src/net/dnsclient_android.go" \
-        || { echo "Error: resolv.conf patch did not take effect."; exit 1; }
-    grep -q 'EPERM' "$GOROOT_PATCHED/src/syscall/netlink_android.go" \
-        || { echo "Error: netlink patch did not take effect."; exit 1; }
+        && grep -q 'EPERM' "$GOROOT_PATCHED/src/syscall/netlink_android.go" \
+        || { echo "   patches applied but did not take effect"; rm -rf "$GOROOT_PATCHED"; return 1; }
+}
+
+setup_patched_go() {
+    if [ -f "$GO_STAMP" ] && [ "$(cat "$GO_STAMP")" = "$GO_VERSION" ]; then
+        echo "-> Patched Go $GO_VERSION already prepared."
+        return 0
+    fi
+
+    echo "-> Preparing patched Go $GO_VERSION toolchain (required by tailscale's go.mod)..."
+    rm -rf "$GOTOOLDIR"
+    mkdir -p "$GOTOOLDIR"
+
+    local tarball="$GOTOOLDIR/go.tar.gz" expected actual
+    if ! expected=$(go_tarball_sha256) || [ -z "$expected" ]; then
+        echo "Error: go.dev does not list go$GO_VERSION for linux-amd64."
+        exit 1
+    fi
+    if ! wget -q -O "$tarball" "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"; then
+        echo "Error: could not download Go $GO_VERSION."
+        exit 1
+    fi
+    actual=$(sha256sum "$tarball" | cut -d' ' -f1)
+    if [ "$actual" != "$expected" ]; then
+        echo "Error: Go $GO_VERSION checksum mismatch."
+        echo "       expected: $expected (go.dev release index)"
+        echo "       actual:   $actual"
+        exit 1
+    fi
+
+    # The vendored copies first: they are reviewed and do not depend on a
+    # third-party repository. They patch Go's own sources, so a new Go release
+    # can break them; then fall back to what termux-packages ships today, since
+    # Termux keeps its Go package -- and so these patches -- current. Either
+    # way a toolchain that is not fully patched is never used: building without
+    # them yields a binary that cannot list interfaces on a phone.
+    if ! patch_go_from "$PATCH_DIR/go" "$tarball"; then
+        echo "-> Vendored Go patches do not fit go$GO_VERSION; trying termux-packages master..."
+        local fresh="$GOTOOLDIR/termux-patches" d
+        mkdir -p "$fresh"
+        for d in $GO_PATCHES; do
+            if ! curl -fsSL -o "$fresh/$d.diff" "$TERMUX_PATCH_URL/$d.diff"; then
+                echo "Error: could not fetch $d.diff from termux-packages."
+                exit 1
+            fi
+        done
+        if ! patch_go_from "$fresh" "$tarball"; then
+            echo "Error: neither the vendored nor termux-packages' current Go patches"
+            echo "       apply to go$GO_VERSION. Termux has probably not caught up with"
+            echo "       this Go release yet; retry later, or force an older Go with"
+            echo "       GO_VERSION=... if tailscale's go.mod allows it."
+            exit 1
+        fi
+        echo "::warning::Built with termux-packages' current Go patches, not the vendored ones. Run ./patches/go/refresh.sh to re-vendor."
+    fi
+    rm -f "$tarball"
 
     echo "$GO_VERSION" > "$GO_STAMP"
     echo "   done."
@@ -209,6 +277,12 @@ setup_patched_go() {
 if [ "$(go env GOOS 2>/dev/null)" = "android" ]; then
     ON_DEVICE=1
     echo "-> Building on Android: using Termux's Go, which already carries these patches."
+    HAVE_GO=$(go env GOVERSION | sed 's/^go//')
+    if [ "$(printf '%s\n%s\n' "$GO_VERSION" "$HAVE_GO" | sort -V | head -n1)" != "$GO_VERSION" ]; then
+        echo "Error: tailscale needs Go $GO_VERSION, Termux has $HAVE_GO."
+        echo "       Update it: pkg upgrade golang"
+        exit 1
+    fi
 else
     ON_DEVICE=0
     setup_patched_go

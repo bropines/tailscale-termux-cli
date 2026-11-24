@@ -64,12 +64,16 @@ third-party repository staying reachable or unchanged.
 
 Source: https://github.com/termux/termux-packages/tree/master/packages/golang/patch-script
 Taken at commit: 09d7e9f4951a5bb64c3ec7a151940d8f244c1dc6
-Applied cleanly to: go1.27.1
+Applied cleanly to: go1.27.1, go1.27.4
 
 ## Refreshing
 
     ./patches/go/refresh.sh
 
 The patches are version-sensitive: they patch Go's own sources, so a Go upgrade
-can break them. build.sh treats a failed application as fatal rather than
-silently producing a binary without them.
+can break them. The Go version itself is not pinned anywhere: build.sh reads it
+from tailscale's `go.mod`, so it moves when upstream moves. If the vendored
+patches no longer apply to that Go, build.sh tries the ones termux-packages
+ships today (Termux keeps its Go package current) and prints a warning to
+re-vendor. Only if neither applies does the build fail -- it never produces a
+binary without them.
